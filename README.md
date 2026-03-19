@@ -113,16 +113,30 @@ python main.py
 > Note: pynput does **not** require root on X11.
 </details>
 
-### Download Pre-Built (Windows)
+### Download Pre-Built (All Platforms)
 
-Check [Releases](https://github.com/joestechsolutions/whisper-walkie/releases) for a standalone `.exe` — no Python required. New releases are built automatically via GitHub Actions when a version is tagged.
+Check [Releases](https://github.com/joestechsolutions/whisper-walkie/releases) for standalone builds — no Python required:
 
-### Build Your Own Exe (Windows)
+| Platform | Download | Notes |
+|----------|----------|-------|
+| **Windows** | `.zip` containing `WhisperWalkie.exe` | Double-click to run |
+| **macOS** | `.zip` containing `WhisperWalkie` | Grant Accessibility permission on first run |
+| **Linux** | `.tar.gz` containing `WhisperWalkie` | X11 recommended; install `xdotool` for best results |
+
+The Whisper speech model is **bundled inside** — no internet connection needed after download. New releases are built automatically via GitHub Actions when a version is tagged.
+
+### Build Your Own (Any Platform)
 
 ```bash
 pip install pyinstaller
 pyinstaller WhisperWalkie.spec
-# Output: dist/WhisperWalkie.exe
+# Output: dist/WhisperWalkie/ folder
+```
+
+To bundle the model (recommended):
+```bash
+python -c "from faster_whisper.utils import download_model; download_model('base', output_dir='./faster-whisper-base')"
+pyinstaller WhisperWalkie.spec
 ```
 
 ## Configuration
@@ -175,7 +189,7 @@ This project is designed to sustain itself with minimal human intervention:
 | Text injection | SendInput (Unicode) | CGEvents | pynput/xdotool | wtype |
 | CUDA acceleration | Yes | No | Yes | Yes |
 | Window title logging | Yes | Yes | Yes (xdotool) | No |
-| Pre-built exe | Yes | No | No | No |
+| Pre-built download | Yes | Yes | Yes | Yes |
 
 ## Known Limitations
 

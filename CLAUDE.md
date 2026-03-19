@@ -85,4 +85,4 @@ platform_backend/
 
 - **Logging**: File-based logging to `walkie.log` (overwritten each run). App logger is DEBUG, third-party loggers are WARNING.
 
-- **PyInstaller build**: `WhisperWalkie.spec` is Windows-specific. macOS/Linux packaging not yet configured.
+- **PyInstaller build**: `WhisperWalkie.spec` uses `--onedir` mode and builds on all 3 platforms via GitHub Actions. The Whisper base model is pre-downloaded into `./faster-whisper-base/` at build time and bundled into the output. At runtime, `_get_model_path()` in main.py checks for the bundled model via `sys._MEIPASS`, falling back to auto-download if not bundled.

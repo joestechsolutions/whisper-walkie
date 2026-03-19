@@ -36,6 +36,18 @@ MODEL_SIZE = 'base'
 SAMPLE_RATE = 16000
 OLLAMA_URL = "http://localhost:11434/api"
 
+def _get_model_path():
+    """Return path to bundled Whisper model if available, else model name for download."""
+    # Check for model bundled by PyInstaller (--onedir or --onefile)
+    bundle_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    bundled = os.path.join(bundle_dir, 'faster-whisper-base')
+    if os.path.isdir(bundled) and os.path.isfile(os.path.join(bundled, 'model.bin')):
+        log.info("Using bundled Whisper model at %s", bundled)
+        return bundled
+    # Fall back to downloading on first use
+    log.info("No bundled model found — will download '%s' on first use", MODEL_SIZE)
+    return MODEL_SIZE
+
 # --- State Management ---
 class AppState:
     def __init__(self):
@@ -61,16 +73,17 @@ backend = get_backend()
 # --- Transcription Logic ---
 
 def load_whisper():
-    print(f"Loading '{MODEL_SIZE}' Whisper model...")
+    model_path = _get_model_path()
+    print(f"Loading '{model_path}' Whisper model...")
     device = "cpu" if platform.system() == "Darwin" else "cuda"
     compute_type = "float16" if device == "cuda" else "int8"
 
     try:
-        state.whisper_model = WhisperModel(MODEL_SIZE, device=device, compute_type=compute_type)
+        state.whisper_model = WhisperModel(model_path, device=device, compute_type=compute_type)
         print(f"Model loaded successfully on {device.upper()}.")
     except Exception as e:
         print(f"Failed to load on {device.upper()}, falling back to CPU. Error: {e}")
-        state.whisper_model = WhisperModel(MODEL_SIZE, device="cpu", compute_type="int8")
+        state.whisper_model = WhisperModel(model_path, device="cpu", compute_type="int8")
         print("Model loaded successfully on CPU.")
 
 def audio_callback(indata, frames, time, status):

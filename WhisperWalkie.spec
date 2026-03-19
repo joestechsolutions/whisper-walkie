@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
+import os
 
 datas = []
 binaries = []
@@ -13,6 +14,12 @@ datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('scipy')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
+# Bundle the pre-downloaded Whisper base model so the app works offline.
+# The model directory is expected at ./faster-whisper-base/ at build time
+# (the CI workflow downloads it before running PyInstaller).
+model_dir = os.path.join(os.getcwd(), 'faster-whisper-base')
+if os.path.isdir(model_dir):
+    datas += [(model_dir, 'faster-whisper-base')]
 
 a = Analysis(
     ['main.py'],
@@ -32,16 +39,13 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name='WhisperWalkie',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -49,4 +53,14 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=['icon.ico'],
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='WhisperWalkie',
 )

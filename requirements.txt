@@ -3,7 +3,6 @@ numpy
 faster-whisper
 pyperclip
 scipy
-flet
+flet==0.81.0
 requests
 pynput
-keyboard; sys_platform == "win32"

@@ -9,13 +9,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Tech Stack
 
 - **Python** (`main.py` for app logic/GUI, `platform_backend/` for OS-specific code)
-- **Flet** (v0.81.0+) for the GUI (Flutter-based, cross-platform)
+- **Flet** (v0.81.0, pinned) for the GUI (Flutter-based, cross-platform)
 - **faster-whisper** for local speech-to-text (CTranslate2, CUDA on Windows/Linux, CPU on macOS)
 - **sounddevice** for audio capture
-- **Platform backend layer** for keyboard hooks and text injection:
-  - **Windows**: `keyboard` library + Win32 SendInput via ctypes
-  - **macOS**: `pynput` + Quartz CGEvents (requires Accessibility permissions)
-  - **Linux**: `pynput` + XRecord (X11), xdotool/wtype fallbacks for Wayland
+- **pynput** for keyboard hooks on all platforms (unified — no platform-specific keyboard libraries)
+- **Platform backend layer** for text injection:
+  - **Windows**: Win32 SendInput via ctypes (pynput for hooks)
+  - **macOS**: pynput + Quartz CGEvents (requires Accessibility permissions)
+  - **Linux**: pynput + XRecord (X11), xdotool/wtype fallbacks for Wayland
 - **Ollama** integration for optional AI model selection (local LLM)
 
 ## Commands
@@ -46,7 +47,7 @@ The OS-specific code is isolated behind an abstract interface:
 platform_backend/
 ├── __init__.py      # Factory: get_backend() returns the right backend for the OS
 ├── base.py          # PlatformBackend ABC — defines the interface
-├── windows.py       # Win32 SendInput + keyboard library hooks
+├── windows.py       # Win32 SendInput + pynput hooks
 ├── macos.py         # pynput + CGEvents + osascript
 └── linux.py         # pynput + XRecord + xdotool/wtype fallbacks
 ```
@@ -55,7 +56,7 @@ platform_backend/
 - `type_text(text)` — inject text into the focused window
 - `install_key_hook(callback)` / `remove_key_hook()` / `reinstall_key_hook()` — global hotkey monitoring
 - `pre_injection_cleanup()` — dismiss Alt menus (Windows), no-op elsewhere
-- `needs_unhook_for_injection` — True on Windows only (keyboard lib intercepts synthetic keys)
+- `needs_unhook_for_injection` — False on all platforms (pynput is read-only, ignores synthetic keys via `injected` flag)
 - `get_hotkey_names()` / `get_hotkey_scan_codes()` — platform-aware hotkey matching
 
 ### Main App (`main.py`)
@@ -72,9 +73,9 @@ platform_backend/
 
 ## Critical Implementation Details
 
-- **Keyboard hook lifecycle (Windows)**: The `keyboard` library's low-level hook intercepts ALL keystrokes including synthetic ones. The hook must be temporarily removed before injecting text (`backend.needs_unhook_for_injection` is True on Windows). On macOS/Linux, pynput's listener is read-only and doesn't intercept, so no unhook needed.
+- **Keyboard hooks (all platforms)**: All three backends use pynput's Listener, which is read-only and does NOT intercept synthetic keystrokes. On Windows, pynput passes an `injected` flag to callbacks, which we use to ignore our own SendInput events. No unhook/rehook cycle is needed on any platform.
 
-- **Right Alt / AltGr**: Reported inconsistently across platforms. Each backend's `get_hotkey_names()` returns all known aliases. Windows also matches by scan code (56, 541, 57400).
+- **Right Alt / AltGr**: Reported inconsistently across platforms. Each backend's `get_hotkey_names()` returns all known aliases. Windows matches by VK code (165 = VK_RMENU).
 
 - **Focus management (Windows only)**: `backend.pre_injection_cleanup()` sends Escape + mouse click to dismiss Alt-triggered menus. No-op on macOS/Linux.
 

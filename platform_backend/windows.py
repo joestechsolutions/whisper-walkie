@@ -1,9 +1,9 @@
 """Windows platform backend for Whisper Walkie.
 
 Implements PlatformBackend using the Win32 API (via ctypes) for keystroke
-injection and the `keyboard` library for global key hooks.
+injection and ``pynput`` for global key hooks.
 
-Key design decisions that match the original main.py behaviour:
+Key design decisions:
 
 - The INPUT union includes all three input types (KEYBDINPUT, MOUSEINPUT,
   HARDWAREINPUT) so ctypes.sizeof(INPUT) == 40 bytes on x64.  Without
@@ -15,18 +15,20 @@ Key design decisions that match the original main.py behaviour:
 - Stuck modifier keys (right/left/generic Alt, Ctrl, Shift) are released
   with key-up events before every text injection to prevent AltGr artefacts.
 
-- The `keyboard` library intercepts synthetic SendInput keystrokes when its
-  low-level hook is active, so the hook must be removed before injection
-  and re-installed afterwards (needs_unhook_for_injection = True).
+- pynput's Listener on Windows uses WH_KEYBOARD_LL but is read-only — it
+  does NOT intercept or block synthetic SendInput keystrokes.  The callback
+  receives an ``injected`` flag so we can ignore our own synthetic events.
+  This means needs_unhook_for_injection = False (no hook juggling needed).
 """
 
 import ctypes
 import ctypes.wintypes
 import logging
 import time
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
-import keyboard
+from pynput import keyboard as pynput_keyboard
+from pynput.keyboard import Key, KeyCode, Listener
 
 from .base import PlatformBackend
 
@@ -52,9 +54,41 @@ VK_ESCAPE: int = 0x1B
 VK_LMENU: int = 0xA4   # Left Alt
 VK_RMENU: int = 0xA5   # Right Alt
 
-# Right Alt / AltGr scan codes that the keyboard library may report
-_RIGHT_ALT_NAMES: frozenset = frozenset({'right alt', 'alt gr', 'altgr'})
-_RIGHT_ALT_SCANS: frozenset = frozenset({56, 541, 57400})
+# Right Alt / AltGr — pynput reports as Key.alt_r (vk=165) but keyboard
+# layouts and tools may report alternate names.
+_RIGHT_ALT_NAMES: frozenset = frozenset({'right alt', 'alt_r', 'alt gr', 'altgr'})
+
+# VK codes for Right Alt matching (VK_RMENU = 0xA5 = 165)
+_RIGHT_ALT_VK_CODES: frozenset = frozenset({165})
+
+# ---------------------------------------------------------------------------
+# Key name mapping for pynput Key enum members
+# ---------------------------------------------------------------------------
+_KEY_NAME_MAP: dict[Key, str] = {
+    Key.alt_r: "right alt",
+    Key.alt_l: "left alt",
+    Key.ctrl_r: "right ctrl",
+    Key.ctrl_l: "left ctrl",
+    Key.shift_r: "right shift",
+    Key.shift_l: "left shift",
+    Key.scroll_lock: "scroll lock",
+    Key.pause: "pause",
+    Key.insert: "insert",
+    Key.f13: "f13",
+    Key.f14: "f14",
+}
+
+# Modifier keys whose release we attempt before text injection.
+_MODIFIER_KEYS: tuple[Key, ...] = (
+    Key.alt,
+    Key.alt_r,
+    Key.ctrl,
+    Key.ctrl_l,
+    Key.ctrl_r,
+    Key.shift,
+    Key.shift_l,
+    Key.shift_r,
+)
 
 # ---------------------------------------------------------------------------
 # ctypes structures — defined at module level so they are available as soon
@@ -153,13 +187,42 @@ def _make_unicode_input(char_code: int, flags: int = 0) -> INPUT:
     return inp
 
 
+def _translate_pynput_key(key: Key | KeyCode) -> tuple[str, int]:
+    """Return (key_name, vk_code) from a raw pynput key object.
+
+    For special Key members the name comes from *_KEY_NAME_MAP* with a
+    fallback to the member's name attribute.  For KeyCode the printable
+    character is preferred; when absent the string representation is used.
+    vk_code is sourced from ``.vk`` where available, otherwise 0.
+    """
+    if isinstance(key, Key):
+        name = _KEY_NAME_MAP.get(key, key.name)
+        vk: int = getattr(key.value, "vk", None) or 0
+        return name, vk
+
+    # KeyCode (regular character or a raw vk code with no character)
+    char: Optional[str] = getattr(key, "char", None)
+    vk = getattr(key, "vk", None) or 0
+
+    if char is not None:
+        return char, vk
+
+    # Fall back to pynput's own string representation
+    return str(key), vk
+
+
 # ---------------------------------------------------------------------------
 # WindowsBackend
 # ---------------------------------------------------------------------------
 
 
 class WindowsBackend(PlatformBackend):
-    """Windows-specific platform backend using ctypes + the keyboard library."""
+    """Windows-specific platform backend using ctypes + pynput.
+
+    Text injection uses Win32 SendInput for best Unicode support.
+    Keyboard hooks use pynput's Listener (WH_KEYBOARD_LL) which is read-only
+    and does not intercept synthetic keystrokes — no unhook/rehook needed.
+    """
 
     def __init__(self) -> None:
         self._user32 = ctypes.windll.user32
@@ -173,10 +236,8 @@ class WindowsBackend(PlatformBackend):
         ]
         self._user32.SendInput.restype = ctypes.wintypes.UINT
 
-        # Keep a reference to the last wrapper passed to keyboard.hook() so
-        # reinstall_key_hook() can reuse it without the caller having to
-        # supply it again.
-        self._current_callback_wrapper: Callable | None = None
+        # The currently active pynput Listener (or None).
+        self._listener: Optional[Listener] = None
 
         log.debug(
             "WindowsBackend initialised — INPUT size = %d bytes",
@@ -240,63 +301,70 @@ class WindowsBackend(PlatformBackend):
         )
         return total_sent
 
-    def install_key_hook(self, callback: Callable) -> Any:
-        """Install a global low-level keyboard hook via the keyboard library.
+    def install_key_hook(self, callback: Callable) -> Listener:
+        """Install a global keyboard hook using a ``pynput`` Listener.
 
-        *callback* is called as ``callback(event_type, key_name, scan_code)``
-        where *event_type* is ``'down'`` or ``'up'``, *key_name* is the
-        lower-cased key name string (may be empty), and *scan_code* is the
-        hardware scan code integer (or ``None`` if unavailable).
+        The *callback* is called as ``callback(event_type, key_name,
+        scan_code)`` where *event_type* is ``'down'`` or ``'up'``.
 
-        Returns the hook handle (the wrapper function) so the caller can
-        store it for later reinstallation.
+        Synthetic (injected) keystrokes from SendInput are automatically
+        ignored so text injection doesn't trigger the hotkey callback.
+
+        Returns the started ``Listener`` instance.
         """
 
-        def callback_wrapper(event: keyboard.KeyboardEvent) -> None:
-            event_type: str = event.event_type  # 'down' or 'up'
-            key_name: str = (event.name or "").lower()
-            scan_code: int | None = getattr(event, "scan_code", None)
+        def _on_press(key: Key | KeyCode, injected: bool = False) -> None:
+            if injected:
+                return  # ignore our own SendInput keystrokes
             try:
-                callback(event_type, key_name, scan_code)
+                name, vk_code = _translate_pynput_key(key)
+                callback("down", name, vk_code)
             except Exception as exc:
-                log.error("Key hook callback raised an exception: %s", exc)
+                log.debug("WindowsBackend: error in on_press handler: %s", exc)
 
-        self._current_callback_wrapper = callback_wrapper
-        handle = keyboard.hook(callback_wrapper, suppress=False)
-        log.info("keyboard.hook() installed")
-        return handle
+        def _on_release(key: Key | KeyCode, injected: bool = False) -> None:
+            if injected:
+                return  # ignore our own SendInput keystrokes
+            try:
+                name, vk_code = _translate_pynput_key(key)
+                callback("up", name, vk_code)
+            except Exception as exc:
+                log.debug("WindowsBackend: error in on_release handler: %s", exc)
+
+        listener = Listener(on_press=_on_press, on_release=_on_release)
+        listener.start()
+        self._listener = listener
+        log.info("pynput Listener installed (Windows)")
+        return listener
 
     def remove_key_hook(self, handle: Any = None) -> None:
-        """Remove all active keyboard hooks installed by the keyboard library.
+        """Stop the pynput Listener identified by *handle* (or the stored one).
 
-        The *handle* parameter is accepted for API compatibility but is not
-        used — ``keyboard.unhook_all()`` is the safest approach because it
-        clears all hooks registered within this process, including any that
-        were re-installed internally.
+        If *handle* is ``None``, the most recently installed listener is
+        stopped.  Stopping an already-stopped listener is a no-op.
         """
+        target: Optional[Listener] = handle if handle is not None else self._listener
+
+        if target is None:
+            log.debug("WindowsBackend.remove_key_hook: no active listener to remove")
+            return
+
         try:
-            keyboard.unhook_all()
-            log.info("keyboard.unhook_all() complete")
+            target.stop()
+            log.debug("WindowsBackend: pynput Listener stopped")
         except Exception as exc:
-            log.warning("Failed to unhook keyboard: %s", exc)
+            log.warning("WindowsBackend.remove_key_hook: error stopping listener: %s", exc)
+        finally:
+            if target is self._listener:
+                self._listener = None
 
-    def reinstall_key_hook(self, callback: Callable) -> Any:
-        """Re-install the keyboard hook after it was removed for injection.
+    def reinstall_key_hook(self, callback: Callable) -> Listener:
+        """Stop any existing listener and install a new one.
 
-        Uses the same wrapper created in the most recent call to
-        ``install_key_hook`` so the normalised callback signature is
-        preserved.  If no wrapper exists yet (first call), delegates to
-        ``install_key_hook`` to build one.
+        Returns the new ``Listener`` handle.
         """
-        if self._current_callback_wrapper is None:
-            log.debug(
-                "reinstall_key_hook: no existing wrapper, calling install_key_hook"
-            )
-            return self.install_key_hook(callback)
-
-        handle = keyboard.hook(self._current_callback_wrapper, suppress=False)
-        log.info("keyboard.hook() re-installed")
-        return handle
+        self.remove_key_hook()
+        return self.install_key_hook(callback)
 
     def get_foreground_window_title(self) -> str:
         """Return the title bar text of the currently focused window.
@@ -373,25 +441,20 @@ class WindowsBackend(PlatformBackend):
 
     @property
     def needs_unhook_for_injection(self) -> bool:
-        """True — the keyboard library's hook intercepts synthetic keystrokes.
+        """False — pynput's Listener is read-only and does not block synthetic keys.
 
-        When the hook is active, SendInput keystrokes are captured by the
-        low-level hook callback before they reach the target window, so the
-        text never actually arrives.  The hook must be removed before calling
-        type_text() and reinstalled afterwards.
+        Unlike the ``keyboard`` library, pynput on Windows uses a WH_KEYBOARD_LL
+        hook that observes but does not intercept.  The ``injected`` flag in the
+        callback lets us ignore our own SendInput events, so no hook juggling
+        is needed.
         """
-        return True
+        return False
 
     def get_hotkey_names(self, hotkey: str) -> set:
         """Return the full set of name strings that identify *hotkey*.
 
-        Right Alt is reported inconsistently by the keyboard library across
-        different keyboard layouts and Windows versions — it may appear as
-        ``'right alt'``, ``'alt gr'``, or ``'altgr'``.  When *hotkey* is any
-        of those three variants all three are included in the returned set so
-        the caller can match any of them.
-
-        For all other keys the set contains only the lower-cased hotkey name.
+        Right Alt is reported by pynput as 'right alt' (via our _KEY_NAME_MAP).
+        We also include legacy aliases for compatibility.
         """
         hotkey_lower = hotkey.lower()
         if hotkey_lower in _RIGHT_ALT_NAMES:
@@ -399,27 +462,13 @@ class WindowsBackend(PlatformBackend):
         return {hotkey_lower}
 
     def get_hotkey_scan_codes(self, hotkey: str) -> set:
-        """Return the full set of scan codes that identify *hotkey*.
+        """Return VK codes that identify *hotkey*.
 
-        Scan codes are looked up via ``keyboard.key_to_scan_codes()``.  For
-        Right Alt variants the three known AltGr scan codes (56, 541, 57400)
-        are also included because different keyboards and virtualisation layers
-        may report different values.
-
-        Returns an empty set if the hotkey name is not recognised.
+        pynput on Windows uses virtual key codes rather than hardware scan
+        codes.  For Right Alt, returns {165} (VK_RMENU).
+        For other keys, returns an empty set (name matching is sufficient).
         """
         hotkey_lower = hotkey.lower()
-        scan_codes: set = set()
-
-        try:
-            scan_codes.update(keyboard.key_to_scan_codes(hotkey))
-        except ValueError:
-            log.debug(
-                "get_hotkey_scan_codes: keyboard library does not recognise %r",
-                hotkey,
-            )
-
         if hotkey_lower in _RIGHT_ALT_NAMES:
-            scan_codes.update(_RIGHT_ALT_SCANS)
-
-        return scan_codes
+            return set(_RIGHT_ALT_VK_CODES)
+        return set()

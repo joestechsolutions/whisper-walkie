@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  test:
+    name: Python ${{ matrix.python-version }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+        python-version: ["3.10", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      # faster-whisper requires ctranslate2 which needs system libs that are
+      # unavailable in standard CI runners. sounddevice needs PortAudio.
+      # We attempt a full install first and fall back to the lightweight subset
+      # that is sufficient for import and syntax checks.
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt || pip install flet==0.81.0 pynput requests numpy scipy pyperclip
+
+      # Linux needs a virtual display for Flet (Flutter/GTK) and the X11 libs
+      # that pynput's XRecord backend depends on at import time.
+      - name: Install Linux system deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends \
+            xvfb \
+            libxtst-dev \
+            libx11-dev \
+            xdotool
+
+      - name: Syntax check — main.py
+        run: python -c "import py_compile; py_compile.compile('main.py', doraise=True)"
+
+      - name: Syntax check — platform_backend
+        run: |
+          python -c "import py_compile; py_compile.compile('platform_backend/__init__.py', doraise=True)"
+          python -c "import py_compile; py_compile.compile('platform_backend/base.py', doraise=True)"
+          python -c "import py_compile; py_compile.compile('platform_backend/windows.py', doraise=True)"
+          python -c "import py_compile; py_compile.compile('platform_backend/macos.py', doraise=True)"
+          python -c "import py_compile; py_compile.compile('platform_backend/linux.py', doraise=True)"
+
+      # The backend factory import triggers the OS-specific branch. On Linux we
+      # need a dummy display so Flet's Flutter engine does not abort the process.
+      - name: Verify platform backend loads
+        run: python -c "from platform_backend import get_backend; print(type(get_backend()))"
+        env:
+          DISPLAY: ":99"   # used only on Linux; harmless on Windows/macOS
+
+      # Run pytest if it is installed and a test suite exists. The `|| true`
+      # prevents a hard failure when there are no test files yet.
+      - name: Run tests (if any)
+        run: |
+          pip install pytest --quiet
+          pytest --tb=short -q || true

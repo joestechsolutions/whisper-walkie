@@ -31,6 +31,7 @@ log = logging.getLogger("walkie")
 log.setLevel(logging.DEBUG)  # Our own logger stays at DEBUG
 
 # --- Configuration ---
+APP_VERSION = "1.0.0"
 DEFAULT_HOTKEY = 'right alt'
 MODEL_SIZE = 'base'
 SAMPLE_RATE = 16000
@@ -315,6 +316,134 @@ def _icon_button(icon, tooltip: str, on_click=None) -> ft.IconButton:
             shape=ft.RoundedRectangleBorder(radius=DS.RADIUS_SM),
         ),
     )
+
+
+def _build_about_dialog(page: ft.Page) -> ft.AlertDialog:
+    """Build and return the About dialog for Whisper Walkie."""
+
+    def _link_row(label: str, url: str) -> ft.Row:
+        """A labeled clickable URL row."""
+        return ft.Row(
+            spacing=DS.SP_SM,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            controls=[
+                ft.Text(
+                    label,
+                    size=12,
+                    color=DS.TEXT_MUTED,
+                    width=60,
+                ),
+                ft.TextButton(
+                    content=ft.Text(
+                        url,
+                        size=12,
+                        color=DS.ACCENT,
+                        style=ft.TextStyle(
+                            decoration=ft.TextDecoration.UNDERLINE,
+                            decoration_color=DS.ACCENT,
+                        ),
+                    ),
+                    on_click=lambda _, u=url: page.launch_url(f"https://{u}"),
+                    style=ft.ButtonStyle(
+                        overlay_color=DS.BG_OVERLAY,
+                        padding=ft.Padding.all(0),
+                    ),
+                ),
+            ],
+        )
+
+    def _info_row(label: str, value: str) -> ft.Row:
+        """A simple label/value metadata row."""
+        return ft.Row(
+            spacing=DS.SP_SM,
+            controls=[
+                ft.Text(label, size=12, color=DS.TEXT_MUTED, width=60),
+                ft.Text(value, size=12, color=DS.TEXT_SECONDARY),
+            ],
+        )
+
+    dialog = ft.AlertDialog(
+        modal=True,
+        bgcolor=DS.BG_ELEVATED,
+        shape=ft.RoundedRectangleBorder(radius=DS.RADIUS_LG),
+        title=ft.Row(
+            spacing=DS.SP_SM,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            controls=[
+                ft.Container(
+                    width=28, height=28,
+                    border_radius=8,
+                    bgcolor=DS.PRIMARY,
+                    alignment=ft.Alignment(0, 0),
+                    content=ft.Icon(
+                        icon=ft.Icons.SPATIAL_AUDIO_ROUNDED,
+                        color=ft.Colors.WHITE,
+                        size=14,
+                    ),
+                ),
+                ft.Text(
+                    "Whisper Walkie",
+                    size=15,
+                    weight=ft.FontWeight.W_700,
+                    color=DS.TEXT_PRIMARY,
+                ),
+            ],
+        ),
+        content=ft.Container(
+            width=320,
+            content=ft.Column(
+                spacing=DS.SP_SM,
+                tight=True,
+                controls=[
+                    ft.Text(
+                        "Your voice, your machine. Nothing leaves.",
+                        size=12,
+                        color=DS.TEXT_ACCENT,
+                        italic=True,
+                    ),
+                    ft.Container(height=DS.SP_XS),
+                    ft.Container(
+                        height=1,
+                        bgcolor=DS.BORDER,
+                    ),
+                    ft.Container(height=DS.SP_XS),
+                    _info_row("Version", f"v{APP_VERSION}"),
+                    _info_row("Built by", "Joe's Tech Solutions LLC"),
+                    _info_row("License", "MIT"),
+                    ft.Container(height=DS.SP_XS),
+                    ft.Container(
+                        height=1,
+                        bgcolor=DS.BORDER,
+                    ),
+                    ft.Container(height=DS.SP_XS),
+                    _link_row("Website", "joestechsolutions.com"),
+                    _link_row("GitHub", "github.com/joestechsolutions/whisper-walkie"),
+                ],
+            ),
+        ),
+        actions=[
+            ft.TextButton(
+                content=ft.Text(
+                    "Close",
+                    size=13,
+                    color=DS.PRIMARY_GLOW,
+                    weight=ft.FontWeight.W_600,
+                ),
+                on_click=lambda _: _close_about_dialog(dialog, page),
+                style=ft.ButtonStyle(
+                    overlay_color=DS.BG_OVERLAY,
+                    shape=ft.RoundedRectangleBorder(radius=DS.RADIUS_SM),
+                ),
+            ),
+        ],
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
+    return dialog
+
+
+def _close_about_dialog(dialog: ft.AlertDialog, page: ft.Page) -> None:
+    dialog.open = False
+    page.update()
 
 
 # ---------------------------------------------------------------------------
@@ -733,6 +862,10 @@ def main_gui(page: ft.Page):
     pin_chip_ref = ft.Ref()
     _pinned = [False]  # mutable flag in closure
 
+    # ---- About dialog ----
+    about_dialog = _build_about_dialog(page)
+    page.overlay.append(about_dialog)
+
     # ---- Footer hotkey chip ref — updates when hotkey changes ----
     footer_chip_ref = ft.Ref()
 
@@ -980,6 +1113,35 @@ def main_gui(page: ft.Page):
     # Header — with working Pin button
     # ----------------------------------------------------------------
 
+    def handle_about_click(e):
+        about_dialog.open = True
+        page.update()
+
+    about_chip = ft.Container(
+        bgcolor=DS.BG_ELEVATED,
+        border_radius=14,
+        padding=ft.Padding.symmetric(horizontal=10, vertical=4),
+        border=ft.Border.all(1, DS.BORDER_BRIGHT),
+        tooltip="About Whisper Walkie",
+        on_click=handle_about_click,
+        content=ft.Row(
+            spacing=5,
+            tight=True,
+            controls=[
+                ft.Icon(
+                    icon=ft.Icons.INFO_OUTLINE_ROUNDED,
+                    color=DS.TEXT_MUTED,
+                    size=12,
+                ),
+                ft.Text(
+                    f"v{APP_VERSION}",
+                    size=11,
+                    color=DS.TEXT_MUTED,
+                ),
+            ],
+        ),
+    )
+
     def handle_pin_toggle(e):
         _pinned[0] = not _pinned[0]
         page.window.always_on_top = _pinned[0]
@@ -1059,7 +1221,7 @@ def main_gui(page: ft.Page):
                         color=DS.TEXT_PRIMARY,
                     ),
                     ft.Text(
-                        "v1.0",
+                        f"v{APP_VERSION}",
                         size=10,
                         color=DS.TEXT_MUTED,
                         weight=ft.FontWeight.W_500,
@@ -1081,7 +1243,7 @@ def main_gui(page: ft.Page):
                 wordmark,
                 ft.Row(
                     spacing=DS.SP_XS,
-                    controls=[pin_chip, minimize_btn],
+                    controls=[about_chip, pin_chip, minimize_btn],
                 ),
             ],
         ),

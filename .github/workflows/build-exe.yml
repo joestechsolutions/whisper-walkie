@@ -41,6 +41,14 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libxtst-dev libx11-dev portaudio19-dev
 
+      # NSIS is available on GitHub-hosted Windows runners via Chocolatey.
+      # Installing here rather than using a pre-installed version ensures we
+      # always have a known version regardless of runner image updates.
+      - name: Install NSIS (Windows only)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install nsis --yes --no-progress
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -55,6 +63,9 @@ jobs:
       - name: Build with PyInstaller
         run: pyinstaller WhisperWalkie.spec
 
+      # -----------------------------------------------------------------------
+      # Package: zip / tar.gz (all platforms)
+      # -----------------------------------------------------------------------
       - name: Package release (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -68,12 +79,41 @@ jobs:
         if: runner.os == 'Linux'
         run: cd dist && tar czf ${{ matrix.artifact }}.tar.gz WhisperWalkie/
 
+      # -----------------------------------------------------------------------
+      # Build NSIS installer (Windows only)
+      #
+      # APP_VERSION strips the leading "v" from the tag (e.g. v1.2.3 -> 1.2.3)
+      # so VIProductVersion in installer.nsi stays in W.X.Y.Z format.
+      # The tag comes from push.tags (v*) — it is owner-controlled and not
+      # user-supplied input, but we still use an env var for best practice.
+      # makensis is on PATH after the choco install step above.
+      # -----------------------------------------------------------------------
+      - name: Build NSIS installer (Windows only)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          GIT_TAG: ${{ github.ref_name }}
+        run: |
+          $version = $env:GIT_TAG -replace '^v', ''
+          makensis /DAPP_VERSION=$version installer.nsi
+
+      # -----------------------------------------------------------------------
+      # Upload artifacts (for download from the Actions run page)
+      # -----------------------------------------------------------------------
       - name: Upload artifact (zip)
-        if: runner.os != 'Linux'
+        if: runner.os == 'Windows' || runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}-${{ github.ref_name }}
           path: dist/${{ matrix.artifact }}.zip
+          if-no-files-found: error
+
+      - name: Upload artifact (installer)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}-installer-${{ github.ref_name }}
+          path: dist/WhisperWalkie-Setup.exe
           if-no-files-found: error
 
       - name: Upload artifact (tar.gz)
@@ -84,12 +124,21 @@ jobs:
           path: dist/${{ matrix.artifact }}.tar.gz
           if-no-files-found: error
 
-      # Attach to the GitHub Release created by the tag.
+      # -----------------------------------------------------------------------
+      # Attach files to the GitHub Release created by the tag push.
+      # Windows attaches both the zip (portable) and the NSIS installer.
+      # -----------------------------------------------------------------------
       - name: Upload to release (zip)
-        if: runner.os != 'Linux'
+        if: runner.os == 'Windows' || runner.os == 'macOS'
         uses: softprops/action-gh-release@v2
         with:
           files: dist/${{ matrix.artifact }}.zip
+
+      - name: Upload to release (installer)
+        if: runner.os == 'Windows'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/WhisperWalkie-Setup.exe
 
       - name: Upload to release (tar.gz)
         if: runner.os == 'Linux'

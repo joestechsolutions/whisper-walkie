@@ -13,6 +13,20 @@ import pytest
 
 from platform_backend.base import PlatformBackend
 
+# main.py imports sounddevice which requires PortAudio at import time.
+# On CI (especially Linux fallback deps), PortAudio may not be available.
+try:
+    import main as _main_module
+    _HAS_MAIN = True
+except (ImportError, OSError):
+    _main_module = None
+    _HAS_MAIN = False
+
+_skip_no_main = pytest.mark.skipif(
+    not _HAS_MAIN,
+    reason="main.py could not be imported (missing PortAudio or other system dep)",
+)
+
 
 # ---------------------------------------------------------------------------
 # Factory tests
@@ -252,20 +266,16 @@ class TestLinuxBackend:
 class TestModelPath:
     """Test _get_model_path() logic for bundled vs. downloaded model."""
 
+    @_skip_no_main
     def test_returns_model_name_when_no_bundle(self):
         """When no bundled model exists, should return 'base' for download."""
         # Ensure _MEIPASS is not set (not a PyInstaller bundle)
         if hasattr(sys, '_MEIPASS'):
             pytest.skip("Running inside PyInstaller bundle")
-        # Import the function
-        sys.path.insert(0, ".")
         from main import _get_model_path, MODEL_SIZE
-        # Unless there's a local faster-whisper-base dir with model.bin,
-        # this should return the model size string
         import os
         bundled = os.path.join(os.path.dirname(os.path.abspath("main.py")), "faster-whisper-base")
         if os.path.isdir(bundled) and os.path.isfile(os.path.join(bundled, "model.bin")):
-            # Model exists locally — should return the path
             assert os.path.isdir(_get_model_path())
         else:
             assert _get_model_path() == MODEL_SIZE
@@ -289,6 +299,7 @@ class TestModelPath:
 # App configuration tests
 # ---------------------------------------------------------------------------
 
+@_skip_no_main
 class TestAppConfig:
     """Test application-level configuration constants."""
 
@@ -316,6 +327,7 @@ class TestAppConfig:
 # AppState tests
 # ---------------------------------------------------------------------------
 
+@_skip_no_main
 class TestAppState:
     """Test AppState initialization."""
 

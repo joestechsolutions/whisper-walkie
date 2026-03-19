@@ -3,6 +3,6 @@ numpy
 faster-whisper
 pyperclip
 scipy
-flet==0.81.0
+flet==0.82.2
 requests
 pynput

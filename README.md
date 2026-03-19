@@ -34,9 +34,11 @@ No clipboard involved. Text is injected via platform-native keystroke APIs, so i
 - **Ollama Integration** — Detects local Ollama models for future AI post-processing.
 - **Self-Sustaining** — CI/CD pipeline tests every change on all 3 platforms. Dependabot keeps dependencies current. Tag a version and the exe builds itself.
 
-## Screenshots
+## Demo
 
-*Coming soon*
+https://github.com/joestechsolutions/whisper-walkie/assets/demo.mp4
+
+> Hold Right Alt, speak, release — text appears instantly in any window.
 
 ## Quick Start
 

@@ -36,7 +36,7 @@ No clipboard involved. Text is injected via platform-native keystroke APIs, so i
 
 ## Demo
 
-https://github.com/joestechsolutions/whisper-walkie/assets/demo.mp4
+https://github.com/user-attachments/assets/682d5a2b-b35b-41cd-ac61-77a16de6ad6c
 
 > Hold Right Alt, speak, release — text appears instantly in any window.
 

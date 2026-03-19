@@ -76,8 +76,14 @@ jobs:
           echo "Skipped — macOS CI runners cannot grant Accessibility permissions for pynput."
           echo "Syntax checks passed; backend code is valid."
 
-      # Run pytest if tests exist. || true prevents failure when no tests yet.
-      - name: Run tests (if any)
-        run: |
-          pip install pytest --quiet
-          pytest --tb=short -q || true
+      - name: Install pytest
+        run: pip install pytest --quiet
+
+      # Run the full test suite. On Linux, pynput needs an X display.
+      - name: Run tests (Windows / macOS)
+        if: runner.os != 'Linux'
+        run: pytest tests/ -v --tb=short
+
+      - name: Run tests (Linux — xvfb)
+        if: runner.os == 'Linux'
+        run: xvfb-run pytest tests/ -v --tb=short

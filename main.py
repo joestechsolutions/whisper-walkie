@@ -321,6 +321,490 @@ def _icon_button(icon, tooltip: str, on_click=None) -> ft.IconButton:
     )
 
 
+# ---------------------------------------------------------------------------
+# First-run onboarding — config helpers
+# ---------------------------------------------------------------------------
+
+def _get_config_path() -> str:
+    """Return the path to ~/.whisper-walkie/config.json."""
+    return os.path.join(os.path.expanduser("~"), ".whisper-walkie", "config.json")
+
+
+def _load_config() -> dict:
+    """Load config from disk, returning an empty dict on any error."""
+    try:
+        with open(_get_config_path(), "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception:
+        return {}
+
+
+def _save_config(data: dict) -> None:
+    """Persist *data* to ~/.whisper-walkie/config.json, creating dirs as needed."""
+    config_dir = os.path.join(os.path.expanduser("~"), ".whisper-walkie")
+    os.makedirs(config_dir, exist_ok=True)
+    try:
+        with open(_get_config_path(), "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2)
+    except Exception as exc:
+        log.warning("Could not save config: %s", exc)
+
+
+def _is_first_run() -> bool:
+    """Return True when onboarding has never been completed."""
+    return not _load_config().get("onboarding_complete", False)
+
+
+# ---------------------------------------------------------------------------
+# First-run onboarding — dialog builder
+# ---------------------------------------------------------------------------
+
+def _build_onboarding_dialog(page: ft.Page) -> ft.AlertDialog:
+    """
+    Build and return a 3-step first-run onboarding AlertDialog.
+
+    Step 1 — Welcome
+    Step 2 — Quick Setup  (mic + hotkey selection)
+    Step 3 — You're Ready (try-it instructions + platform tip)
+    """
+
+    TOTAL_STEPS = 3
+    _step = [0]  # mutable closure cell
+
+    # ---- Step-indicator dots ----
+
+    dot_refs = [ft.Ref() for _ in range(TOTAL_STEPS)]
+
+    def _build_step_dots() -> ft.Row:
+        dots = []
+        for i, ref in enumerate(dot_refs):
+            dots.append(
+                ft.Container(
+                    ref=ref,
+                    width=8 if i != _step[0] else 24,
+                    height=8,
+                    border_radius=4,
+                    bgcolor=DS.PRIMARY if i == _step[0] else DS.BORDER_BRIGHT,
+                    animate=ft.Animation(200, ft.AnimationCurve.EASE_IN_OUT),
+                )
+            )
+        return ft.Row(
+            controls=dots,
+            alignment=ft.MainAxisAlignment.CENTER,
+            spacing=DS.SP_XS,
+        )
+
+    step_dots_container_ref = ft.Ref()
+
+    def _refresh_dots():
+        if step_dots_container_ref.current:
+            for i, ref in enumerate(dot_refs):
+                if ref.current:
+                    ref.current.bgcolor = DS.PRIMARY if i == _step[0] else DS.BORDER_BRIGHT
+                    ref.current.width = 24 if i == _step[0] else 8
+
+    # ---- Shared option data (mirrors the settings panel) ----
+
+    HOTKEY_OPTIONS_KEYS = ['right alt', 'scroll lock', 'pause', 'f13', 'f14', 'insert', 'right ctrl']
+    hotkey_options = [(k, k.upper()) for k in HOTKEY_OPTIONS_KEYS]
+
+    try:
+        all_devices = sd.query_devices()
+        audio_input_devices = [
+            (str(i), f"{d['name']} ({int(d['default_samplerate'])} Hz)")
+            for i, d in enumerate(all_devices)
+            if d['max_input_channels'] > 0
+        ]
+    except Exception:
+        audio_input_devices = []
+
+    if not audio_input_devices:
+        audio_input_devices = [("default", "System Default")]
+
+    # Track wizard selections
+    _selected_hotkey = [state.hotkey]
+    _selected_device_str = [audio_input_devices[0][0]]
+
+    onboard_hotkey_ref = ft.Ref()
+    onboard_device_ref = ft.Ref()
+
+    def handle_onboard_hotkey_change(e):
+        val = onboard_hotkey_ref.current.value if onboard_hotkey_ref.current else None
+        if val:
+            _selected_hotkey[0] = val
+
+    def handle_onboard_device_change(e):
+        val = onboard_device_ref.current.value if onboard_device_ref.current else None
+        if val:
+            _selected_device_str[0] = val
+
+    # ---- Platform tip for step 3 ----
+
+    _platform = platform.system()
+    if _platform == "Windows":
+        platform_tip = "Tip: If Right Alt triggers menus, try Scroll Lock instead"
+    elif _platform == "Darwin":
+        platform_tip = "Tip: Grant Accessibility permissions if prompted"
+    else:
+        platform_tip = "Tip: Install xdotool for best results on X11"
+
+    # ---- Step content builders ----
+
+    def _step1_content() -> ft.Column:
+        return ft.Column(
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=DS.SP_LG,
+            controls=[
+                # App icon
+                ft.Container(
+                    width=64, height=64,
+                    border_radius=18,
+                    bgcolor=DS.PRIMARY,
+                    alignment=ft.Alignment(0, 0),
+                    shadow=ft.BoxShadow(
+                        blur_radius=24,
+                        color=DS.PRIMARY + "55",
+                        offset=ft.Offset(0, 6),
+                    ),
+                    content=ft.Icon(
+                        icon=ft.Icons.SPATIAL_AUDIO_ROUNDED,
+                        color=ft.Colors.WHITE,
+                        size=32,
+                    ),
+                ),
+                ft.Column(
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    spacing=DS.SP_SM,
+                    controls=[
+                        ft.Text(
+                            "Welcome to Whisper Walkie",
+                            size=20,
+                            weight=ft.FontWeight.W_700,
+                            color=DS.TEXT_PRIMARY,
+                            text_align=ft.TextAlign.CENTER,
+                        ),
+                        ft.Text(
+                            "Your voice, your machine. Nothing leaves.",
+                            size=13,
+                            color=DS.TEXT_ACCENT,
+                            italic=True,
+                            text_align=ft.TextAlign.CENTER,
+                        ),
+                    ],
+                ),
+                ft.Container(
+                    bgcolor=DS.BG_OVERLAY,
+                    border_radius=DS.RADIUS_MD,
+                    padding=ft.Padding.all(DS.SP_MD),
+                    content=ft.Text(
+                        "Voice typing that works in any app on your computer. "
+                        "Everything runs locally — your audio never leaves your machine.",
+                        size=13,
+                        color=DS.TEXT_SECONDARY,
+                        text_align=ft.TextAlign.CENTER,
+                    ),
+                ),
+            ],
+        )
+
+    def _step2_content() -> ft.Column:
+        return ft.Column(
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=DS.SP_LG,
+            controls=[
+                ft.Column(
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    spacing=DS.SP_XS,
+                    controls=[
+                        ft.Text(
+                            "Quick Setup",
+                            size=20,
+                            weight=ft.FontWeight.W_700,
+                            color=DS.TEXT_PRIMARY,
+                            text_align=ft.TextAlign.CENTER,
+                        ),
+                        ft.Text(
+                            "Choose your microphone and hotkey",
+                            size=13,
+                            color=DS.TEXT_SECONDARY,
+                            text_align=ft.TextAlign.CENTER,
+                        ),
+                    ],
+                ),
+                ft.Container(
+                    width=340,
+                    content=ft.Column(
+                        spacing=DS.SP_MD,
+                        controls=[
+                            _styled_dropdown(
+                                "Microphone",
+                                audio_input_devices,
+                                onboard_device_ref,
+                                on_change=handle_onboard_device_change,
+                                initial_value=_selected_device_str[0],
+                            ),
+                            _styled_dropdown(
+                                "Push-to-Talk Hotkey",
+                                hotkey_options,
+                                onboard_hotkey_ref,
+                                on_change=handle_onboard_hotkey_change,
+                                initial_value=_selected_hotkey[0],
+                            ),
+                        ],
+                    ),
+                ),
+            ],
+        )
+
+    def _step3_content() -> ft.Column:
+        hotkey_label = _selected_hotkey[0].upper()
+        return ft.Column(
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=DS.SP_LG,
+            controls=[
+                ft.Column(
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    spacing=DS.SP_XS,
+                    controls=[
+                        ft.Text(
+                            "You're Ready!",
+                            size=20,
+                            weight=ft.FontWeight.W_700,
+                            color=DS.TEXT_PRIMARY,
+                            text_align=ft.TextAlign.CENTER,
+                        ),
+                    ],
+                ),
+                # Big visual instruction box
+                ft.Container(
+                    bgcolor=DS.BG_OVERLAY,
+                    border_radius=DS.RADIUS_LG,
+                    padding=ft.Padding.symmetric(horizontal=DS.SP_XL, vertical=DS.SP_LG),
+                    border=ft.Border.all(1, DS.PRIMARY + "55"),
+                    content=ft.Column(
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        spacing=DS.SP_SM,
+                        controls=[
+                            ft.Icon(
+                                icon=ft.Icons.MIC_ROUNDED,
+                                color=DS.PRIMARY_GLOW,
+                                size=36,
+                            ),
+                            ft.Row(
+                                alignment=ft.MainAxisAlignment.CENTER,
+                                spacing=DS.SP_XS,
+                                wrap=True,
+                                controls=[
+                                    ft.Text(
+                                        "Hold",
+                                        size=15,
+                                        color=DS.TEXT_SECONDARY,
+                                    ),
+                                    ft.Container(
+                                        bgcolor=DS.PRIMARY_DIM,
+                                        border_radius=DS.RADIUS_SM,
+                                        padding=ft.Padding.symmetric(horizontal=10, vertical=4),
+                                        border=ft.Border.all(1, DS.PRIMARY_GLOW + "88"),
+                                        content=ft.Text(
+                                            hotkey_label,
+                                            size=14,
+                                            weight=ft.FontWeight.W_700,
+                                            color=DS.PRIMARY_GLOW,
+                                            font_family="monospace",
+                                        ),
+                                    ),
+                                    ft.Text(
+                                        "and say something",
+                                        size=15,
+                                        color=DS.TEXT_SECONDARY,
+                                    ),
+                                ],
+                            ),
+                        ],
+                    ),
+                ),
+                ft.Text(
+                    "Text will appear wherever your cursor is — any app, any window",
+                    size=12,
+                    color=DS.TEXT_SECONDARY,
+                    text_align=ft.TextAlign.CENTER,
+                ),
+                # Platform tip
+                ft.Container(
+                    bgcolor=DS.BG_ELEVATED,
+                    border_radius=DS.RADIUS_MD,
+                    padding=ft.Padding.all(DS.SP_SM),
+                    border=ft.Border.all(1, DS.BORDER_BRIGHT),
+                    content=ft.Row(
+                        spacing=DS.SP_SM,
+                        vertical_alignment=ft.CrossAxisAlignment.START,
+                        controls=[
+                            ft.Icon(
+                                icon=ft.Icons.LIGHTBULB_OUTLINE_ROUNDED,
+                                color=DS.ACCENT,
+                                size=14,
+                            ),
+                            ft.Text(
+                                platform_tip,
+                                size=12,
+                                color=DS.TEXT_SECONDARY,
+                                expand=True,
+                            ),
+                        ],
+                    ),
+                ),
+            ],
+        )
+
+    # ---- Dialog content container (swapped on step change) ----
+
+    content_ref = ft.Ref()
+    action_btn_ref = ft.Ref()
+    back_btn_ref = ft.Ref()
+
+    def _apply_step_selections():
+        """Apply wizard selections to the live app state."""
+        # Hotkey
+        hotkey_val = _selected_hotkey[0]
+        if hotkey_val:
+            state.hotkey = hotkey_val
+            log.info("Onboarding: hotkey set to %s", hotkey_val)
+
+        # Microphone
+        device_str = _selected_device_str[0]
+        if device_str and device_str != "default":
+            try:
+                idx = int(device_str)
+                state.selected_device_index = idx
+                devices = sd.query_devices()
+                state.device_sample_rate = int(devices[idx]['default_samplerate'])
+                log.info("Onboarding: device set to index %d, rate %d", idx, state.device_sample_rate)
+            except (ValueError, IndexError) as exc:
+                log.warning("Onboarding device change error: %s", exc)
+
+    def _advance_step(e):
+        current = _step[0]
+
+        if current == TOTAL_STEPS - 1:
+            # Final step — apply selections, save config, close
+            _apply_step_selections()
+            cfg = _load_config()
+            cfg["onboarding_complete"] = True
+            cfg["version"] = APP_VERSION
+            _save_config(cfg)
+            dialog.open = False
+            page.update()
+            return
+
+        _step[0] = current + 1
+        _update_dialog_for_step()
+
+    def _go_back(e):
+        if _step[0] > 0:
+            _step[0] -= 1
+            _update_dialog_for_step()
+
+    def _update_dialog_for_step():
+        step = _step[0]
+
+        # Swap content
+        if content_ref.current:
+            if step == 0:
+                content_ref.current.content = _step1_content()
+            elif step == 1:
+                content_ref.current.content = _step2_content()
+            else:
+                content_ref.current.content = _step3_content()
+
+        # Update action button label
+        if action_btn_ref.current:
+            if step == 0:
+                label = "Get Started"
+            elif step == 1:
+                label = "Next"
+            else:
+                label = "Start Using Whisper Walkie"
+            action_btn_ref.current.content = ft.Text(
+                label,
+                size=13,
+                color=DS.TEXT_PRIMARY,
+                weight=ft.FontWeight.W_600,
+            )
+
+        # Back button visibility
+        if back_btn_ref.current:
+            back_btn_ref.current.visible = (step > 0)
+
+        # Refresh step dots
+        _refresh_dots()
+
+        page.update()
+
+    # ---- Build the dialog ----
+
+    action_btn = ft.ElevatedButton(
+        ref=action_btn_ref,
+        content=ft.Text(
+            "Get Started",
+            size=13,
+            color=DS.TEXT_PRIMARY,
+            weight=ft.FontWeight.W_600,
+        ),
+        on_click=_advance_step,
+        style=ft.ButtonStyle(
+            bgcolor=DS.PRIMARY,
+            overlay_color=DS.PRIMARY_DIM,
+            shape=ft.RoundedRectangleBorder(radius=DS.RADIUS_MD),
+            padding=ft.Padding.symmetric(horizontal=DS.SP_XL, vertical=DS.SP_MD),
+        ),
+    )
+
+    back_btn = ft.TextButton(
+        ref=back_btn_ref,
+        content=ft.Text(
+            "Back",
+            size=13,
+            color=DS.TEXT_MUTED,
+            weight=ft.FontWeight.W_500,
+        ),
+        on_click=_go_back,
+        visible=False,
+        style=ft.ButtonStyle(
+            overlay_color=DS.BG_OVERLAY,
+            shape=ft.RoundedRectangleBorder(radius=DS.RADIUS_SM),
+        ),
+    )
+
+    dialog = ft.AlertDialog(
+        modal=True,
+        bgcolor=DS.BG_ELEVATED,
+        shape=ft.RoundedRectangleBorder(radius=DS.RADIUS_XL),
+        title=ft.Container(
+            ref=step_dots_container_ref,
+            content=_build_step_dots(),
+            margin=ft.Margin.only(bottom=DS.SP_XS),
+        ),
+        content=ft.Container(
+            ref=content_ref,
+            width=360,
+            content=_step1_content(),
+        ),
+        actions=[
+            ft.Row(
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    back_btn,
+                    action_btn,
+                ],
+            ),
+        ],
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
+
+    return dialog
+
+
 def _build_about_dialog(page: ft.Page) -> ft.AlertDialog:
     """Build and return the About dialog for Whisper Walkie."""
 
@@ -868,6 +1352,12 @@ def main_gui(page: ft.Page):
     # ---- About dialog ----
     about_dialog = _build_about_dialog(page)
     page.overlay.append(about_dialog)
+
+    # ---- First-run onboarding ----
+    if _is_first_run():
+        onboarding_dialog = _build_onboarding_dialog(page)
+        page.overlay.append(onboarding_dialog)
+        onboarding_dialog.open = True
 
     # ---- Footer hotkey chip ref — updates when hotkey changes ----
     footer_chip_ref = ft.Ref()

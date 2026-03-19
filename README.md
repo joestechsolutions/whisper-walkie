@@ -1,5 +1,7 @@
 # Whisper Walkie
 
+<img width="1280" height="640" alt="social-preview" src="https://github.com/user-attachments/assets/fc5eaa28-de99-430a-a38d-83d131719eee" />
+
 ### Your voice, your machine. Nothing leaves.
 
 **Free, private, push-to-talk voice typing that works in any app.** No cloud APIs. No subscriptions. No data collection. Everything runs 100% locally on your machine.

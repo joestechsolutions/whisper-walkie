@@ -7,7 +7,8 @@ Hold a hotkey, speak, release — your words appear wherever your cursor is. No 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)
-![AI Built](https://img.shields.io/badge/Built%20with-Generative%20AI-blueviolet)
+![CI](https://github.com/joestechsolutions/whisper-walkie/actions/workflows/ci.yml/badge.svg)
+![AI Built](https://img.shields.io/badge/Built%20with-Claude%20AI-blueviolet)
 
 ---
 
@@ -31,6 +32,7 @@ No clipboard involved. Text is injected via platform-native keystroke APIs, so i
 - **Transcription History** — Last 10 transcriptions saved with timestamps and copy buttons.
 - **Pin to Top** — Optional always-on-top mode so the app stays visible.
 - **Ollama Integration** — Detects local Ollama models for future AI post-processing.
+- **Self-Sustaining** — CI/CD pipeline tests every change on all 3 platforms. Dependabot keeps dependencies current. Tag a version and the exe builds itself.
 
 ## Screenshots
 
@@ -106,12 +108,12 @@ pip install -r requirements.txt
 python main.py
 ```
 
-> Note: Unlike the `keyboard` library, pynput does **not** require root on X11.
+> Note: pynput does **not** require root on X11.
 </details>
 
 ### Download Pre-Built (Windows)
 
-Check [Releases](https://github.com/joestechsolutions/whisper-walkie/releases) for a standalone `.exe` — no Python required.
+Check [Releases](https://github.com/joestechsolutions/whisper-walkie/releases) for a standalone `.exe` — no Python required. New releases are built automatically via GitHub Actions when a version is tagged.
 
 ### Build Your Own Exe (Windows)
 
@@ -135,21 +137,31 @@ All settings are available in the app's UI:
 
 | Component | Technology | Platform |
 |-----------|------------|----------|
-| GUI | [Flet](https://flet.dev) (Flutter for Python) | All |
+| GUI | [Flet](https://flet.dev) 0.81.0 (Flutter for Python) | All |
 | Speech-to-Text | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (CTranslate2) | All |
 | Audio Capture | [sounddevice](https://python-sounddevice.readthedocs.io/) (PortAudio) | All |
-| Hotkey System | [keyboard](https://github.com/boppreh/keyboard) | Windows |
-| Hotkey System | [pynput](https://pynput.readthedocs.io/) | macOS, Linux |
+| Keyboard Hooks | [pynput](https://pynput.readthedocs.io/) | All |
 | Text Injection | Win32 SendInput via ctypes | Windows |
 | Text Injection | pynput CGEvents | macOS |
 | Text Injection | pynput Xlib / xdotool / wtype | Linux |
 | Local AI | [Ollama](https://ollama.ai) (optional) | All |
+| CI/CD | GitHub Actions | All |
+| Dependency Updates | Dependabot (weekly) | All |
 
 ## How It's Built
 
 This project was built using **Generative AI as a development tool** — specifically [Claude](https://claude.ai) by Anthropic. It demonstrates that AI-assisted development is a legitimate and powerful approach to building real, functional software.
 
-The entire application — from the platform abstraction layer to the Flet GUI design system — was developed through human-AI collaboration. The developer (a human with domain expertise) directed the architecture and requirements, while AI handled implementation details, debugging edge cases, and iterating on the UI design.
+The entire application — from the platform abstraction layer to the Flet GUI design system — was developed through human-AI collaboration. The developer (a human with domain expertise) directed the architecture and requirements, while AI handled implementation details, cross-platform compatibility, debugging edge cases, and iterating on the UI design.
+
+### Self-Managing Architecture
+
+This project is designed to sustain itself with minimal human intervention:
+
+- **GitHub Actions CI** tests every push across Windows, macOS, and Linux (Python 3.10 + 3.12)
+- **Dependabot** opens weekly PRs when dependencies have updates — CI validates them automatically
+- **Auto-build releases** — tag a version (`git tag v1.x`) and a Windows exe is built and published to GitHub Releases
+- **Unified dependencies** — one keyboard library ([pynput](https://pynput.readthedocs.io/)) across all platforms, reducing maintenance surface
 
 **This is the future of software engineering.** AI doesn't replace developers — it amplifies them.
 
@@ -167,6 +179,7 @@ The entire application — from the platform abstraction layer to the Flet GUI d
 
 - **Right Alt quirk (Windows)** — Windows reports Right Alt as "AltGr" in some keyboard layouts, which can trigger menu bars. The app handles this with an Escape keystroke + click workaround.
 - **First transcription is slower** — The Whisper model loads on first use. Subsequent transcriptions are fast.
+- **Screen recording conflict** — Some screen recorders grab exclusive mic access, causing garbled transcription. Fix: disable "Allow applications to take exclusive control" in Windows Sound Settings for your microphone.
 - **Wayland (Linux)** — Global keyboard hooks require `/dev/input/` access (add your user to the `input` group). Text injection needs `wtype` installed.
 - **macOS permissions** — Must grant Accessibility access or keyboard hooks will silently fail.
 
@@ -178,10 +191,15 @@ whisper-walkie/
 ├── platform_backend/          # Cross-platform abstraction layer
 │   ├── __init__.py            # Factory: get_backend()
 │   ├── base.py                # PlatformBackend ABC
-│   ├── windows.py             # Win32 SendInput + keyboard hooks
+│   ├── windows.py             # Win32 SendInput + pynput hooks
 │   ├── macos.py               # pynput + CGEvents + osascript
 │   └── linux.py               # pynput + xdotool/wtype
-├── requirements.txt           # Python dependencies
+├── .github/
+│   ├── workflows/ci.yml       # CI: test on 3 platforms x 2 Python versions
+│   ├── workflows/build-exe.yml # Auto-build exe on version tags
+│   └── dependabot.yml         # Weekly dependency update PRs
+├── .agent-os/product/         # AI agent context (mission, roadmap, decisions)
+├── requirements.txt           # Python dependencies (pinned)
 ├── WhisperWalkie.spec         # PyInstaller build config (Windows)
 ├── icon.ico                   # App icon
 ├── start-walkie.bat           # Launch exe (Windows)
@@ -199,6 +217,8 @@ Contributions welcome! This is an open-source project by [Joe's Tech Solutions L
 3. Commit your changes (`git commit -m 'Add cool thing'`)
 4. Push to the branch (`git push origin feature/cool-thing`)
 5. Open a Pull Request
+
+CI will automatically test your changes on Windows, macOS, and Linux.
 
 ## License
 

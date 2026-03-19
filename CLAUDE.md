@@ -4,62 +4,84 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Whisper Walkie** — A Windows push-to-talk speech-to-text desktop app. Hold a hotkey (default: Right Alt), speak, release, and the transcribed text is typed directly into whatever window has focus via Windows SendInput (Unicode keystroke injection). No clipboard involved.
+**Whisper Walkie** — A cross-platform push-to-talk speech-to-text desktop app. Hold a hotkey (default: Right Alt), speak, release, and the transcribed text is typed directly into whatever window has focus. No clipboard involved. Supports Windows, macOS, and Linux.
 
 ## Tech Stack
 
-- **Python** single-file app (`main.py` — ~1470 lines, everything lives here)
-- **Flet** (v0.81.0+) for the GUI (Flutter-based Python UI framework)
-- **faster-whisper** for local speech-to-text (uses CTranslate2, supports CUDA)
+- **Python** (`main.py` for app logic/GUI, `platform_backend/` for OS-specific code)
+- **Flet** (v0.81.0+) for the GUI (Flutter-based, cross-platform)
+- **faster-whisper** for local speech-to-text (CTranslate2, CUDA on Windows/Linux, CPU on macOS)
 - **sounddevice** for audio capture
-- **keyboard** library for global hotkey hooks (low-level Windows hooks)
-- **Windows SendInput API** via ctypes for typing text into target windows
+- **Platform backend layer** for keyboard hooks and text injection:
+  - **Windows**: `keyboard` library + Win32 SendInput via ctypes
+  - **macOS**: `pynput` + Quartz CGEvents (requires Accessibility permissions)
+  - **Linux**: `pynput` + XRecord (X11), xdotool/wtype fallbacks for Wayland
 - **Ollama** integration for optional AI model selection (local LLM)
 
 ## Commands
 
 ```bash
 # Run from source (with console output for debugging)
-venv\Scripts\python.exe main.py
+python main.py                         # or: venv\Scripts\python.exe main.py (Windows)
 
-# Run from source (no console window — production-like)
-venv\Scripts\pythonw.exe main.py
+# Run from source (no console window — production-like, Windows only)
+pythonw main.py
 
 # Install dependencies
-venv\Scripts\pip.exe install -r requirements.txt
+pip install -r requirements.txt
 
-# Build standalone exe with PyInstaller
+# Build standalone exe with PyInstaller (Windows)
 pyinstaller WhisperWalkie.spec
 ```
 
-Batch launchers: `start-walkie.bat` (exe), `start-walkie-debug.bat` (source+console), `start-walkie-source.bat` (source, no console).
+Batch launchers (Windows): `start-walkie.bat` (exe), `start-walkie-debug.bat` (source+console), `start-walkie-source.bat` (source, no console).
 
 ## Architecture
 
-Everything is in `main.py`. The key sections, in order:
+### Platform Backend (`platform_backend/`)
 
-1. **Windows API layer** (lines ~34–168): ctypes structs for `INPUT`, `KEYBDINPUT`, `MOUSEINPUT`. `type_text_direct()` injects Unicode characters via `SendInput` — no clipboard, no Ctrl+V. Releases stuck modifier keys before typing.
+The OS-specific code is isolated behind an abstract interface:
 
-2. **AppState** (line ~177): Global singleton holding recording state, audio queue, selected device/hotkey/model, GUI callback reference, and keyboard hook refs.
+```
+platform_backend/
+├── __init__.py      # Factory: get_backend() returns the right backend for the OS
+├── base.py          # PlatformBackend ABC — defines the interface
+├── windows.py       # Win32 SendInput + keyboard library hooks
+├── macos.py         # pynput + CGEvents + osascript
+└── linux.py         # pynput + XRecord + xdotool/wtype fallbacks
+```
 
-3. **Audio pipeline** (lines ~196–338): `load_whisper()` → tries CUDA then falls back to CPU. `audio_callback()` feeds a queue during recording. `start_recording()`/`stop_recording()` toggle state. `process_audio()` runs transcription in a background thread, then unhooks the keyboard listener (because the `keyboard` library intercepts synthetic keystrokes), sends Escape+click to dismiss Alt-triggered menus, types the text, and re-hooks.
+**Key interface methods:**
+- `type_text(text)` — inject text into the focused window
+- `install_key_hook(callback)` / `remove_key_hook()` / `reinstall_key_hook()` — global hotkey monitoring
+- `pre_injection_cleanup()` — dismiss Alt menus (Windows), no-op elsewhere
+- `needs_unhook_for_injection` — True on Windows only (keyboard lib intercepts synthetic keys)
+- `get_hotkey_names()` / `get_hotkey_scan_codes()` — platform-aware hotkey matching
 
-4. **Design system** (line ~358): `DS` class with color tokens, spacing, radii — indigo/cyan dark theme.
+### Main App (`main.py`)
 
-5. **GUI components** (lines ~408–750): Reusable Flet widgets (`_divider`, `_section_label`, `_styled_dropdown`, `_transcription_entry`). `StatusCard` class manages the hero section with state transitions (ready/recording/processing/result) and a live recording timer.
+1. **AppState** — Global singleton holding recording state, audio queue, device/hotkey/model selection, GUI callback, keyboard hook refs.
 
-6. **Main GUI** (`main_gui`, line ~850): Assembles header, status card, history panel, settings panel (hotkey/model/microphone dropdowns), and footer. Wires `update_ui()` callback for background threads to drive UI state.
+2. **Audio pipeline** — `load_whisper()` tries CUDA (Windows/Linux) then falls back to CPU. `audio_callback()` feeds a queue during recording. `process_audio()` runs transcription in a background thread, then uses the backend to type the result.
 
-7. **Background listener** (line ~1386): `run_transcription()` loads Whisper, installs `keyboard.hook()` with scan-code matching for Right Alt variants (alt gr, scan 541/57400), opens a `sounddevice.InputStream`, and loops forever.
+3. **Design system** — `DS` class with color tokens, spacing, radii (indigo/cyan dark theme).
+
+4. **GUI** — Flet-based: StatusCard (ready/recording/processing/result states with live timer), transcription history panel, settings panel (hotkey/model/microphone dropdowns), header with pin-to-top, footer.
+
+5. **Background listener** — `run_transcription()` loads Whisper, installs keyboard hook via backend, opens a `sounddevice.InputStream`, loops forever.
 
 ## Critical Implementation Details
 
-- **Keyboard hook lifecycle**: The `keyboard` library's low-level hook intercepts ALL keystrokes including synthetic ones from SendInput. The hook must be temporarily removed (`keyboard.unhook_all()`) before injecting text, then reinstalled afterward. This is the most fragile part of the app.
+- **Keyboard hook lifecycle (Windows)**: The `keyboard` library's low-level hook intercepts ALL keystrokes including synthetic ones. The hook must be temporarily removed before injecting text (`backend.needs_unhook_for_injection` is True on Windows). On macOS/Linux, pynput's listener is read-only and doesn't intercept, so no unhook needed.
 
-- **Right Alt / AltGr quirk**: Windows reports Right Alt inconsistently — as 'right alt', 'alt gr', or various scan codes (56, 541, 57400). The hotkey matcher checks both name and scan code sets.
+- **Right Alt / AltGr**: Reported inconsistently across platforms. Each backend's `get_hotkey_names()` returns all known aliases. Windows also matches by scan code (56, 541, 57400).
 
-- **Focus management after recording**: After the user releases the hotkey, the app sends Escape (to dismiss any Alt-triggered menus) and a mouse click at the current cursor position (to refocus the text area), then types. There's a 300ms delay to let the key-up propagate.
+- **Focus management (Windows only)**: `backend.pre_injection_cleanup()` sends Escape + mouse click to dismiss Alt-triggered menus. No-op on macOS/Linux.
 
-- **Logging**: File-based logging to `walkie.log` (overwritten each run). The app's own logger is DEBUG level while third-party loggers are set to WARNING.
+- **macOS permissions**: Requires Accessibility access (System Preferences > Privacy & Security > Accessibility). The macOS backend logs a helpful error if permission is denied.
 
-- **PyInstaller build**: `WhisperWalkie.spec` collects all data/binaries from faster_whisper, flet, sounddevice, and scipy. Produces a single-file `.exe` with `console=False`.
+- **Linux display servers**: X11 works fully via pynput XRecord. Wayland has limited support — falls back to `wtype` for text injection and cannot get window titles. The backend detects `XDG_SESSION_TYPE` and warns.
+
+- **Logging**: File-based logging to `walkie.log` (overwritten each run). App logger is DEBUG, third-party loggers are WARNING.
+
+- **PyInstaller build**: `WhisperWalkie.spec` is Windows-specific. macOS/Linux packaging not yet configured.

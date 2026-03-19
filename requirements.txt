@@ -1,9 +1,9 @@
 sounddevice
 numpy
-keyboard
-pyautogui
 faster-whisper
 pyperclip
 scipy
 flet
 requests
+pynput
+keyboard; sys_platform == "win32"

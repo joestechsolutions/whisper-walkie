@@ -4,9 +4,7 @@ import queue
 import threading
 import numpy as np
 import sounddevice as sd
-import keyboard
 import pyperclip
-import ctypes
 from faster_whisper import WhisperModel
 import scipy.signal
 import flet as ft
@@ -16,6 +14,8 @@ import time
 import platform
 import logging
 import datetime
+
+from platform_backend import get_backend
 
 # Set up file logging so we can debug even when running via pythonw.exe
 LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "walkie.log")
@@ -29,143 +29,6 @@ logging.basicConfig(
 )
 log = logging.getLogger("walkie")
 log.setLevel(logging.DEBUG)  # Our own logger stays at DEBUG
-
-# Windows API helpers for focus management and input injection
-user32 = ctypes.windll.user32 if platform.system() == 'Windows' else None
-kernel32 = ctypes.windll.kernel32 if platform.system() == 'Windows' else None
-
-def get_foreground_window():
-    """Get the currently focused window handle."""
-    if user32:
-        return user32.GetForegroundWindow()
-    return None
-
-def get_window_title(hwnd):
-    """Get the title of a window."""
-    if not hwnd or not user32:
-        return ""
-    buf = ctypes.create_unicode_buffer(256)
-    user32.GetWindowTextW(hwnd, buf, 256)
-    return buf.value
-
-# --- Low-level Windows SendInput for reliable keystroke injection ---
-if platform.system() == 'Windows':
-    import ctypes.wintypes
-
-    INPUT_KEYBOARD = 1
-    KEYEVENTF_KEYUP = 0x0002
-    VK_CONTROL = 0x11
-    VK_V = 0x56
-    VK_MENU = 0x12      # Alt
-    VK_LMENU = 0xA4     # Left Alt
-    VK_RMENU = 0xA5     # Right Alt
-    VK_SHIFT = 0x10
-
-    # The INPUT union MUST include all three input types so
-    # ctypes.sizeof(INPUT) matches the Windows ABI (40 bytes on x64).
-    # Without MOUSEINPUT, the struct is too small and SendInput returns 0.
-
-    class MOUSEINPUT(ctypes.Structure):
-        _fields_ = [
-            ("dx", ctypes.c_long),
-            ("dy", ctypes.c_long),
-            ("mouseData", ctypes.wintypes.DWORD),
-            ("dwFlags", ctypes.wintypes.DWORD),
-            ("time", ctypes.wintypes.DWORD),
-            ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
-        ]
-
-    class KEYBDINPUT(ctypes.Structure):
-        _fields_ = [
-            ("wVk", ctypes.wintypes.WORD),
-            ("wScan", ctypes.wintypes.WORD),
-            ("dwFlags", ctypes.wintypes.DWORD),
-            ("time", ctypes.wintypes.DWORD),
-            ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
-        ]
-
-    class HARDWAREINPUT(ctypes.Structure):
-        _fields_ = [
-            ("uMsg", ctypes.wintypes.DWORD),
-            ("wParamL", ctypes.wintypes.WORD),
-            ("wParamH", ctypes.wintypes.WORD),
-        ]
-
-    class INPUT(ctypes.Structure):
-        class _INPUT(ctypes.Union):
-            _fields_ = [
-                ("ki", KEYBDINPUT),
-                ("mi", MOUSEINPUT),
-                ("hi", HARDWAREINPUT),
-            ]
-        _fields_ = [
-            ("type", ctypes.wintypes.DWORD),
-            ("_input", _INPUT),
-        ]
-
-    def _make_key_input(vk, flags=0):
-        """Create an INPUT structure for a keyboard event."""
-        inp = INPUT()
-        inp.type = INPUT_KEYBOARD
-        inp._input.ki.wVk = vk
-        inp._input.ki.wScan = 0
-        inp._input.ki.dwFlags = flags
-        inp._input.ki.time = 0
-        inp._input.ki.dwExtraInfo = ctypes.pointer(ctypes.c_ulong(0))
-        return inp
-
-    KEYEVENTF_UNICODE = 0x0004
-
-    def _make_unicode_input(char_code, flags=0):
-        """Create an INPUT for a Unicode character (bypasses keyboard layout)."""
-        inp = INPUT()
-        inp.type = INPUT_KEYBOARD
-        inp._input.ki.wVk = 0          # Must be 0 for Unicode
-        inp._input.ki.wScan = char_code
-        inp._input.ki.dwFlags = KEYEVENTF_UNICODE | flags
-        inp._input.ki.time = 0
-        inp._input.ki.dwExtraInfo = ctypes.pointer(ctypes.c_ulong(0))
-        return inp
-
-    def type_text_direct(text):
-        """Type text by injecting Unicode characters via SendInput.
-        No clipboard, no Ctrl+V, no modifier keys — just raw characters.
-        Works with any window that accepts keyboard input."""
-        # First release any stuck modifier keys
-        release_mods = [
-            _make_key_input(VK_RMENU, KEYEVENTF_KEYUP),
-            _make_key_input(VK_LMENU, KEYEVENTF_KEYUP),
-            _make_key_input(VK_MENU, KEYEVENTF_KEYUP),
-            _make_key_input(VK_CONTROL, KEYEVENTF_KEYUP),
-            _make_key_input(VK_SHIFT, KEYEVENTF_KEYUP),
-        ]
-        arr = (INPUT * len(release_mods))(*release_mods)
-        user32.SendInput(len(release_mods), arr, ctypes.sizeof(INPUT))
-        time.sleep(0.05)
-
-        # Type each character via Unicode SendInput
-        total_sent = 0
-        for char in text:
-            inputs = [
-                _make_unicode_input(ord(char)),                        # key down
-                _make_unicode_input(ord(char), KEYEVENTF_KEYUP),       # key up
-            ]
-            arr = (INPUT * 2)(*inputs)
-            result = user32.SendInput(2, arr, ctypes.sizeof(INPUT))
-            total_sent += result
-            time.sleep(0.005)  # 5ms between characters
-
-        log.info(f"type_text_direct: sent {total_sent} events for {len(text)} chars")
-        return total_sent
-
-    # Set up SendInput function signature for proper error handling
-    user32.SendInput.argtypes = [ctypes.wintypes.UINT, ctypes.POINTER(INPUT), ctypes.c_int]
-    user32.SendInput.restype = ctypes.wintypes.UINT
-else:
-    def type_text_direct(text):
-        """Fallback for non-Windows."""
-        import pyautogui
-        pyautogui.write(text)
 
 # --- Configuration ---
 DEFAULT_HOTKEY = 'right alt'
@@ -192,11 +55,14 @@ class AppState:
 
 state = AppState()
 
+# Initialize platform backend
+backend = get_backend()
+
 # --- Transcription Logic ---
 
 def load_whisper():
     print(f"Loading '{MODEL_SIZE}' Whisper model...")
-    device = "cuda" if platform.system() == "Windows" else "cpu" # Default to CPU for Mac/Linux safety for now
+    device = "cpu" if platform.system() == "Darwin" else "cuda"
     compute_type = "float16" if device == "cuda" else "int8"
 
     try:
@@ -264,66 +130,34 @@ def process_audio(audio_data):
             # Since we removed always_on_top, the user's target window stays focused.
             time.sleep(0.3)  # Wait for the Right Alt key-up to fully propagate
 
-            fg = get_foreground_window()
-            fg_title = get_window_title(fg) if fg else "None"
-            log.info(f"Pasting to foreground={fg}, title={fg_title!r}")
+            fg_title = backend.get_foreground_window_title()
+            log.info(f"Pasting to foreground window: {fg_title!r}")
 
-            # CRITICAL: Temporarily unhook the keyboard listener.
-            # The keyboard library's low-level hook intercepts ALL keystrokes
-            # (including synthetic ones from SendInput) and drops them.
-            try:
-                keyboard.unhook_all()
-                log.info("Keyboard hook removed for typing")
-            except Exception as ex:
-                log.warning(f"Failed to unhook keyboard: {ex}")
+            # On Windows, the keyboard hook intercepts synthetic keystrokes,
+            # so we must remove it before typing and reinstall after.
+            if backend.needs_unhook_for_injection:
+                try:
+                    backend.remove_key_hook()
+                    log.info("Keyboard hook removed for typing")
+                except Exception as ex:
+                    log.warning(f"Failed to unhook keyboard: {ex}")
+                time.sleep(0.05)
 
-            time.sleep(0.05)  # Let Windows process the unhook
+            # Platform-specific cleanup (dismisses Alt menus on Windows, no-op elsewhere)
+            backend.pre_injection_cleanup()
 
-            # Dismiss any menus/UI elements activated by the Alt key.
-            # Right Alt = AltGr on Windows, which can open menus on key release.
-            VK_ESCAPE = 0x1B
-            esc_events = [
-                _make_key_input(VK_ESCAPE),
-                _make_key_input(VK_ESCAPE, KEYEVENTF_KEYUP),
-            ]
-            arr = (INPUT * 2)(*esc_events)
-            user32.SendInput(2, arr, ctypes.sizeof(INPUT))
-            time.sleep(0.05)
-
-            # Click the mouse at current position to refocus the text area
-            # (in case Escape shifted focus to the menu bar)
-            import ctypes.wintypes as wt
-            class POINT(ctypes.Structure):
-                _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
-            pt = POINT()
-            user32.GetCursorPos(ctypes.byref(pt))
-            # Send mouse click at current position
-            INPUT_MOUSE = 0
-            MOUSEEVENTF_LEFTDOWN = 0x0002
-            MOUSEEVENTF_LEFTUP = 0x0004
-            click_down = INPUT()
-            click_down.type = INPUT_MOUSE
-            click_down._input.mi.dwFlags = MOUSEEVENTF_LEFTDOWN
-            click_up = INPUT()
-            click_up.type = INPUT_MOUSE
-            click_up._input.mi.dwFlags = MOUSEEVENTF_LEFTUP
-            arr = (INPUT * 2)(click_down, click_up)
-            user32.SendInput(2, arr, ctypes.sizeof(INPUT))
+            # Type text directly into the focused window
+            backend.type_text(transcript + ' ')
             time.sleep(0.1)
 
-            # Type text directly via Unicode SendInput — no clipboard needed,
-            # no Ctrl+V, no modifier key issues. Each character is injected
-            # individually as a Unicode keystroke.
-            type_text_direct(transcript + ' ')
-            time.sleep(0.1)
-
-            # Restore the keyboard hook
-            try:
-                if state.key_handler:
-                    state.hook_ref = keyboard.hook(state.key_handler, suppress=False)
-                    log.info("Keyboard hook re-installed")
-            except Exception as ex:
-                log.error(f"Failed to re-hook keyboard: {ex}")
+            # Restore the keyboard hook if it was removed
+            if backend.needs_unhook_for_injection:
+                try:
+                    if state.key_handler:
+                        state.hook_ref = backend.reinstall_key_hook(state.key_handler)
+                        log.info("Keyboard hook re-installed")
+                except Exception as ex:
+                    log.error(f"Failed to re-hook keyboard: {ex}")
 
             state.status_text = f"Typed: {transcript[:20]}..."
             # Update GUI with result AFTER typing is complete
@@ -1386,67 +1220,43 @@ def main_gui(page: ft.Page):
     def run_transcription():
         load_whisper()
 
-        # Hotkey handling — Right Alt is reported inconsistently by the
-        # keyboard library (as 'right alt', 'alt gr', or scan 541/57400).
-        # Build a set of all matching names and scan codes up front.
-        RIGHT_ALT_NAMES = {'right alt', 'alt gr', 'altgr'}
-        RIGHT_ALT_SCANS = {56, 541, 57400}
+        # Build the set of expected key names and scan codes for the hotkey
+        _expected_names = backend.get_hotkey_names(state.hotkey)
+        _expected_scans = backend.get_hotkey_scan_codes(state.hotkey)
+
+        log.info(f"Hotkey config: names={_expected_names}, scans={_expected_scans}")
+
+        _key_log_count = [0]
+
+        def on_key_event(event_type, key_name, scan_code):
+            """Normalized key event handler from platform backend."""
+            # Log first 20 key events for debugging
+            if _key_log_count[0] < 20:
+                log.debug(f"KEY: name={key_name!r} scan={scan_code} type={event_type}")
+                _key_log_count[0] += 1
+                if _key_log_count[0] == 20:
+                    log.debug("(throttling key logging after 20 events)")
+
+            matched = key_name in _expected_names or scan_code in _expected_scans
+
+            if matched:
+                if event_type == 'down' and not state.is_recording:
+                    log.info(f"HOTKEY DOWN: name={key_name!r} scan={scan_code}")
+                    start_recording()
+                elif event_type == 'up' and state.is_recording:
+                    log.info(f"HOTKEY UP: name={key_name!r} scan={scan_code}")
+                    stop_recording()
 
         try:
-            _hotkey_lower = state.hotkey.lower()
-
-            # Collect all valid scan codes for the configured hotkey
-            _expected_scans = set()
-            try:
-                _expected_scans.update(keyboard.key_to_scan_codes(state.hotkey))
-            except ValueError:
-                pass
-            # If it's a right-alt variant, include all known right-alt scans
-            if _hotkey_lower in RIGHT_ALT_NAMES:
-                _expected_scans.update(RIGHT_ALT_SCANS)
-
-            # Collect all valid names for the configured hotkey
-            _expected_names = {_hotkey_lower}
-            if _hotkey_lower in RIGHT_ALT_NAMES:
-                _expected_names.update(RIGHT_ALT_NAMES)
-
-            log.info(f"Hotkey config: names={_expected_names}, scans={_expected_scans}")
-
-            _key_log_count = [0]  # mutable counter for throttled logging
-
-            def on_key_event(e):
-                key_name = (e.name or '').lower()
-                scan = getattr(e, 'scan_code', None)
-
-                # Log first 20 key events so we can see what's coming through
-                if _key_log_count[0] < 20:
-                    log.debug(f"KEY: name={e.name!r} scan={scan} type={e.event_type}")
-                    _key_log_count[0] += 1
-                    if _key_log_count[0] == 20:
-                        log.debug("(throttling key logging after 20 events)")
-
-                matched = False
-                if key_name in _expected_names:
-                    matched = True
-                elif scan in _expected_scans:
-                    matched = True
-
-                if matched:
-                    if e.event_type == 'down' and not state.is_recording:
-                        log.info(f"HOTKEY DOWN: name={e.name!r} scan={scan}")
-                        start_recording()
-                    elif e.event_type == 'up' and state.is_recording:
-                        log.info(f"HOTKEY UP: name={e.name!r} scan={scan}")
-                        stop_recording()
-
             state.key_handler = on_key_event
-            state.hook_ref = keyboard.hook(on_key_event, suppress=False)
-            log.info("keyboard.hook() installed successfully")
+            state.hook_ref = backend.install_key_hook(on_key_event)
+            log.info("Keyboard hook installed successfully")
         except Exception as e:
             print(f"Hotkey initialization error: {e}")
             state.status_text = "Hotkey Init Error"
             if state.gui_update_callback: state.gui_update_callback("ready")
 
+        # Audio stream setup (unchanged)
         log.info(f"Audio device index: {state.selected_device_index}, sample rate: {state.device_sample_rate}")
         try:
             if state.selected_device_index is not None:

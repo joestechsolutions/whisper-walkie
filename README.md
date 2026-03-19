@@ -6,7 +6,7 @@ Hold a hotkey, speak, release — your words appear wherever your cursor is. No 
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
-![Platform](https://img.shields.io/badge/Platform-Windows-0078D6?logo=windows&logoColor=white)
+![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)
 ![AI Built](https://img.shields.io/badge/Built%20with-Generative%20AI-blueviolet)
 
 ---
@@ -18,12 +18,13 @@ Hold a hotkey, speak, release — your words appear wherever your cursor is. No 
 3. **Release** the key
 4. Text is **typed directly** into whatever app has focus — browser, chat, IDE, anything
 
-No clipboard involved. Whisper Walkie injects Unicode keystrokes via the Windows SendInput API, so it works everywhere a keyboard works.
+No clipboard involved. Text is injected via platform-native keystroke APIs, so it works everywhere a keyboard works.
 
 ## Features
 
 - **100% Local** — Whisper model runs on your machine. Audio never leaves your computer.
-- **GPU Accelerated** — Automatically uses CUDA if available, falls back to CPU.
+- **Cross-Platform** — Works on Windows, macOS, and Linux.
+- **GPU Accelerated** — Automatically uses CUDA if available (Windows/Linux), falls back to CPU.
 - **Works Everywhere** — Types into any window: browsers, Slack, Discord, VS Code, Word, games.
 - **Push-to-Talk** — Hold to record, release to transcribe. Simple as a walkie-talkie.
 - **Configurable Hotkey** — Right Alt, Scroll Lock, Pause, F13, F14, Insert, or Right Ctrl.
@@ -39,37 +40,80 @@ No clipboard involved. Whisper Walkie injects Unicode keystrokes via the Windows
 
 ### Prerequisites
 
-- **Windows 10/11**
 - **Python 3.10+**
 - **A microphone**
-- **NVIDIA GPU** (optional, for faster transcription)
+- **NVIDIA GPU** (optional, for faster transcription on Windows/Linux)
 
-### Option 1: Run from Source
+### Platform-Specific Notes
+
+<details>
+<summary><b>Windows</b></summary>
+
+Works out of the box. CUDA acceleration supported if you have an NVIDIA GPU.
 
 ```bash
-# Clone the repo
 git clone https://github.com/joestechsolutions/whisper-walkie.git
 cd whisper-walkie
-
-# Create virtual environment
 python -m venv venv
 venv\Scripts\activate
-
-# Install dependencies
 pip install -r requirements.txt
-
-# Run (with console for debugging)
 python main.py
+```
+</details>
 
-# Or run without console window
-pythonw main.py
+<details>
+<summary><b>macOS</b></summary>
+
+Requires **Accessibility permissions** for global keyboard hooks.
+
+On first run, macOS will prompt you to grant access in **System Settings > Privacy & Security > Accessibility**. You must add your terminal app (or Python) to the allowed list.
+
+```bash
+git clone https://github.com/joestechsolutions/whisper-walkie.git
+cd whisper-walkie
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python main.py
 ```
 
-### Option 2: Download the Exe
+> Note: CUDA is not available on macOS. Whisper runs on CPU (still fast with the `base` model).
+</details>
+
+<details>
+<summary><b>Linux</b></summary>
+
+Works on **X11** out of the box via pynput. **Wayland** has limited support.
+
+For best results, install `xdotool`:
+```bash
+sudo apt install xdotool   # Debian/Ubuntu
+sudo pacman -S xdotool     # Arch
+sudo dnf install xdotool   # Fedora
+```
+
+For Wayland, also install `wtype`:
+```bash
+sudo apt install wtype      # if available
+```
+
+```bash
+git clone https://github.com/joestechsolutions/whisper-walkie.git
+cd whisper-walkie
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python main.py
+```
+
+> Note: Unlike the `keyboard` library, pynput does **not** require root on X11.
+</details>
+
+### Download Pre-Built (Windows)
 
 Check [Releases](https://github.com/joestechsolutions/whisper-walkie/releases) for a standalone `.exe` — no Python required.
 
-### Option 3: Build Your Own Exe
+### Build Your Own Exe (Windows)
 
 ```bash
 pip install pyinstaller
@@ -89,41 +133,61 @@ All settings are available in the app's UI:
 
 ## Tech Stack
 
-| Component | Technology |
-|-----------|------------|
-| GUI | [Flet](https://flet.dev) (Flutter for Python) |
-| Speech-to-Text | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (CTranslate2) |
-| Audio Capture | [sounddevice](https://python-sounddevice.readthedocs.io/) (PortAudio) |
-| Hotkey System | [keyboard](https://github.com/boppreh/keyboard) (low-level hooks) |
-| Text Injection | Windows SendInput API via ctypes |
-| Local AI | [Ollama](https://ollama.ai) (optional) |
+| Component | Technology | Platform |
+|-----------|------------|----------|
+| GUI | [Flet](https://flet.dev) (Flutter for Python) | All |
+| Speech-to-Text | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (CTranslate2) | All |
+| Audio Capture | [sounddevice](https://python-sounddevice.readthedocs.io/) (PortAudio) | All |
+| Hotkey System | [keyboard](https://github.com/boppreh/keyboard) | Windows |
+| Hotkey System | [pynput](https://pynput.readthedocs.io/) | macOS, Linux |
+| Text Injection | Win32 SendInput via ctypes | Windows |
+| Text Injection | pynput CGEvents | macOS |
+| Text Injection | pynput Xlib / xdotool / wtype | Linux |
+| Local AI | [Ollama](https://ollama.ai) (optional) | All |
 
 ## How It's Built
 
 This project was built using **Generative AI as a development tool** — specifically [Claude](https://claude.ai) by Anthropic. It demonstrates that AI-assisted development is a legitimate and powerful approach to building real, functional software.
 
-The entire application — from the Windows API integration to the Flet GUI design system — was developed through human-AI collaboration. The developer (a human with domain expertise) directed the architecture and requirements, while AI handled implementation details, debugging edge cases, and iterating on the UI design.
+The entire application — from the platform abstraction layer to the Flet GUI design system — was developed through human-AI collaboration. The developer (a human with domain expertise) directed the architecture and requirements, while AI handled implementation details, debugging edge cases, and iterating on the UI design.
 
 **This is the future of software engineering.** AI doesn't replace developers — it amplifies them.
 
+## Platform Support
+
+| Feature | Windows | macOS | Linux (X11) | Linux (Wayland) |
+|---------|---------|-------|-------------|-----------------|
+| Push-to-talk hotkey | Full | Full | Full | Limited |
+| Text injection | SendInput (Unicode) | CGEvents | pynput/xdotool | wtype |
+| CUDA acceleration | Yes | No | Yes | Yes |
+| Window title logging | Yes | Yes | Yes (xdotool) | No |
+| Pre-built exe | Yes | No | No | No |
+
 ## Known Limitations
 
-- **Windows only** — Uses Windows-specific APIs (SendInput, low-level keyboard hooks). Mac/Linux support is possible but not yet implemented.
-- **Right Alt quirk** — Windows reports Right Alt as "AltGr" in some keyboard layouts, which can trigger menu bars. The app handles this with an Escape keystroke + click workaround.
+- **Right Alt quirk (Windows)** — Windows reports Right Alt as "AltGr" in some keyboard layouts, which can trigger menu bars. The app handles this with an Escape keystroke + click workaround.
 - **First transcription is slower** — The Whisper model loads on first use. Subsequent transcriptions are fast.
+- **Wayland (Linux)** — Global keyboard hooks require `/dev/input/` access (add your user to the `input` group). Text injection needs `wtype` installed.
+- **macOS permissions** — Must grant Accessibility access or keyboard hooks will silently fail.
 
 ## Project Structure
 
 ```
 whisper-walkie/
-├── main.py              # Everything — app logic, GUI, audio, hotkeys
-├── requirements.txt     # Python dependencies
-├── WhisperWalkie.spec   # PyInstaller build config
-├── icon.ico             # App icon
-├── start-walkie.bat     # Launch exe
-├── start-walkie-debug.bat    # Launch from source (console)
-├── start-walkie-source.bat   # Launch from source (no console)
-└── CLAUDE.md            # AI development context
+├── main.py                    # App logic, GUI, audio, transcription
+├── platform_backend/          # Cross-platform abstraction layer
+│   ├── __init__.py            # Factory: get_backend()
+│   ├── base.py                # PlatformBackend ABC
+│   ├── windows.py             # Win32 SendInput + keyboard hooks
+│   ├── macos.py               # pynput + CGEvents + osascript
+│   └── linux.py               # pynput + xdotool/wtype
+├── requirements.txt           # Python dependencies
+├── WhisperWalkie.spec         # PyInstaller build config (Windows)
+├── icon.ico                   # App icon
+├── start-walkie.bat           # Launch exe (Windows)
+├── start-walkie-debug.bat     # Launch from source (Windows, console)
+├── start-walkie-source.bat    # Launch from source (Windows, no console)
+└── CLAUDE.md                  # AI development context
 ```
 
 ## Contributing

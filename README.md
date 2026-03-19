@@ -1,14 +1,28 @@
 # Whisper Walkie
 
-**Local, private speech-to-text that types directly into any window.**
+### Your voice, your machine. Nothing leaves.
 
-Hold a hotkey, speak, release — your words appear wherever your cursor is. No cloud APIs, no clipboard hacks, no subscriptions. Everything runs locally on your machine using OpenAI's Whisper model.
+**Free, private, push-to-talk voice typing that works in any app.** No cloud APIs. No subscriptions. No data collection. Everything runs 100% locally on your machine.
+
+Hold a key. Speak. Release. Your words appear wherever your cursor is — browser, Slack, VS Code, Word, anywhere a keyboard works.
+
+[![Download Latest Release](https://img.shields.io/github/v/release/joestechsolutions/whisper-walkie?label=Download&style=for-the-badge&color=indigo)](https://github.com/joestechsolutions/whisper-walkie/releases/latest)
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)
 ![CI](https://github.com/joestechsolutions/whisper-walkie/actions/workflows/ci.yml/badge.svg)
 ![AI Built](https://img.shields.io/badge/Built%20with-Claude%20AI-blueviolet)
+
+### Why Whisper Walkie?
+
+| Other Tools | Whisper Walkie |
+|-------------|----------------|
+| Send your audio to cloud servers | **100% local** — audio never leaves your machine |
+| $10-20/month subscriptions | **Free and open source** — forever |
+| Only work in specific apps | **Works in ANY window** — types via keyboard injection |
+| Require accounts and sign-ups | **No account needed** — download, run, done |
+| Always listening | **Push-to-talk** — only records when YOU hold the key |
 
 ---
 

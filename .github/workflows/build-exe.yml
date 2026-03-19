@@ -16,19 +16,10 @@ jobs:
         include:
           - os: windows-latest
             artifact: WhisperWalkie-windows
-            zip_cmd: Compress-Archive -Path dist/WhisperWalkie -DestinationPath dist/WhisperWalkie-windows.zip
-            zip_shell: pwsh
-            zip_path: dist/WhisperWalkie-windows.zip
           - os: macos-latest
             artifact: WhisperWalkie-macos
-            zip_cmd: cd dist && zip -r WhisperWalkie-macos.zip WhisperWalkie/
-            zip_shell: bash
-            zip_path: dist/WhisperWalkie-macos.zip
           - os: ubuntu-latest
             artifact: WhisperWalkie-linux
-            zip_cmd: cd dist && tar czf WhisperWalkie-linux.tar.gz WhisperWalkie/
-            zip_shell: bash
-            zip_path: dist/WhisperWalkie-linux.tar.gz
 
     steps:
       - uses: actions/checkout@v4
@@ -61,19 +52,44 @@ jobs:
       - name: Build with PyInstaller
         run: pyinstaller WhisperWalkie.spec
 
-      - name: Package release
-        run: ${{ matrix.zip_cmd }}
-        shell: ${{ matrix.zip_shell }}
+      - name: Package release (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path dist/WhisperWalkie -DestinationPath dist/${{ matrix.artifact }}.zip
 
-      - name: Upload artifact
+      - name: Package release (macOS)
+        if: runner.os == 'macOS'
+        run: cd dist && zip -r ${{ matrix.artifact }}.zip WhisperWalkie/
+
+      - name: Package release (Linux)
+        if: runner.os == 'Linux'
+        run: cd dist && tar czf ${{ matrix.artifact }}.tar.gz WhisperWalkie/
+
+      - name: Upload artifact (zip)
+        if: runner.os != 'Linux'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}-${{ github.ref_name }}
-          path: ${{ matrix.zip_path }}
+          path: dist/${{ matrix.artifact }}.zip
+          if-no-files-found: error
+
+      - name: Upload artifact (tar.gz)
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}-${{ github.ref_name }}
+          path: dist/${{ matrix.artifact }}.tar.gz
           if-no-files-found: error
 
       # Attach to the GitHub Release created by the tag.
-      - name: Upload to release
+      - name: Upload to release (zip)
+        if: runner.os != 'Linux'
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ matrix.zip_path }}
+          files: dist/${{ matrix.artifact }}.zip
+
+      - name: Upload to release (tar.gz)
+        if: runner.os == 'Linux'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/${{ matrix.artifact }}.tar.gz

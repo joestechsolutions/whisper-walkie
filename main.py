@@ -243,7 +243,7 @@ def _divider() -> ft.Container:
     return ft.Container(
         height=1,
         bgcolor=DS.BORDER,
-        margin=ft.margin.symmetric(vertical=DS.SP_SM),
+        margin=ft.Margin.symmetric(vertical=DS.SP_SM),
     )
 
 
@@ -253,7 +253,7 @@ def _section_label(text: str) -> ft.Text:
         size=9,
         weight=ft.FontWeight.W_700,
         color=DS.TEXT_MUTED,
-        letter_spacing=1.8,
+        style=ft.TextStyle(letter_spacing=1.8),
     )
 
 
@@ -278,7 +278,7 @@ def _styled_dropdown(
         focused_border_color=DS.PRIMARY,
         color=DS.TEXT_PRIMARY,
         text_size=13,
-        content_padding=ft.padding.symmetric(horizontal=14, vertical=10),
+        content_padding=ft.Padding.symmetric(horizontal=14, vertical=10),
         border_radius=DS.RADIUS_MD,
     )
     return ft.Column(
@@ -323,9 +323,9 @@ def _transcription_entry(
     return ft.Container(
         bgcolor=DS.BG_ELEVATED if is_latest else DS.BG_SURFACE,
         border_radius=DS.RADIUS_MD,
-        padding=ft.padding.symmetric(horizontal=DS.SP_MD, vertical=DS.SP_SM + 2),
-        border=ft.border.all(1, DS.PRIMARY_GLOW if is_latest else DS.BORDER),
-        margin=ft.margin.only(bottom=DS.SP_SM),
+        padding=ft.Padding.symmetric(horizontal=DS.SP_MD, vertical=DS.SP_SM + 2),
+        border=ft.Border.all(1, DS.PRIMARY_GLOW if is_latest else DS.BORDER),
+        margin=ft.Margin.only(bottom=DS.SP_SM),
         content=ft.Row(
             spacing=DS.SP_MD,
             vertical_alignment=ft.CrossAxisAlignment.START,
@@ -491,8 +491,8 @@ class StatusCard:
             ref=self._badge_ref,
             bgcolor=s["badge_bg"],
             border_radius=20,
-            padding=ft.padding.symmetric(horizontal=12, vertical=4),
-            border=ft.border.all(1, s["color"] + "44"),
+            padding=ft.Padding.symmetric(horizontal=12, vertical=4),
+            border=ft.Border.all(1, s["color"] + "44"),
             content=ft.Row(
                 spacing=6,
                 tight=True,
@@ -537,9 +537,9 @@ class StatusCard:
             visible=False,
             bgcolor=DS.BG_ELEVATED,
             border_radius=DS.RADIUS_MD,
-            padding=ft.padding.symmetric(horizontal=DS.SP_MD, vertical=DS.SP_SM),
-            border=ft.border.all(1, DS.STATE_SUCCESS + "44"),
-            margin=ft.margin.only(top=DS.SP_SM),
+            padding=ft.Padding.symmetric(horizontal=DS.SP_MD, vertical=DS.SP_SM),
+            border=ft.Border.all(1, DS.STATE_SUCCESS + "44"),
+            margin=ft.Margin.only(top=DS.SP_SM),
             content=ft.Row(
                 spacing=DS.SP_SM,
                 controls=[
@@ -565,8 +565,8 @@ class StatusCard:
         return ft.Container(
             bgcolor=DS.BG_SURFACE,
             border_radius=DS.RADIUS_LG,
-            border=ft.border.all(1, DS.BORDER),
-            padding=ft.padding.symmetric(horizontal=DS.SP_LG, vertical=DS.SP_XL),
+            border=ft.Border.all(1, DS.BORDER),
+            padding=ft.Padding.symmetric(horizontal=DS.SP_LG, vertical=DS.SP_XL),
             content=ft.Column(
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                 spacing=DS.SP_MD,
@@ -600,7 +600,7 @@ class StatusCard:
         # Badge
         if self._badge_ref.current:
             self._badge_ref.current.bgcolor = badge_bg
-            self._badge_ref.current.border = ft.border.all(1, color + "44")
+            self._badge_ref.current.border = ft.Border.all(1, color + "44")
             # The badge dot and text are inside badge.content.controls
             row = self._badge_ref.current.content
             if row and len(row.controls) >= 2:
@@ -732,7 +732,7 @@ def main_gui(page: ft.Page):
         count_badge = ft.Container(
             bgcolor=DS.BG_ELEVATED,
             border_radius=10,
-            padding=ft.padding.symmetric(horizontal=7, vertical=2),
+            padding=ft.Padding.symmetric(horizontal=7, vertical=2),
             content=ft.Text(
                 str(len(entries)),
                 size=10,
@@ -768,7 +768,7 @@ def main_gui(page: ft.Page):
                     ],
                 ),
                 ft.TextButton(
-                    text="Clear",
+                    content=ft.Text("Clear"),
                     on_click=handle_clear,
                     style=ft.ButtonStyle(
                         color=DS.TEXT_MUTED,
@@ -819,14 +819,14 @@ def main_gui(page: ft.Page):
                 controls=rows,
                 spacing=0,
                 height=220,
-                padding=ft.padding.only(right=DS.SP_XS),
+                padding=ft.Padding.only(right=DS.SP_XS),
             )
 
         return ft.Container(
             bgcolor=DS.BG_SURFACE,
             border_radius=DS.RADIUS_LG,
-            border=ft.border.all(1, DS.BORDER),
-            padding=ft.padding.all(DS.SP_LG),
+            border=ft.Border.all(1, DS.BORDER),
+            padding=ft.Padding.all(DS.SP_LG),
             content=ft.Column(
                 spacing=DS.SP_SM,
                 controls=[
@@ -916,8 +916,8 @@ def main_gui(page: ft.Page):
     settings_panel = ft.Container(
         bgcolor=DS.BG_SURFACE,
         border_radius=DS.RADIUS_LG,
-        border=ft.border.all(1, DS.BORDER),
-        padding=ft.padding.all(DS.SP_LG),
+        border=ft.Border.all(1, DS.BORDER),
+        padding=ft.Padding.all(DS.SP_LG),
         content=ft.Column(
             spacing=DS.SP_MD,
             controls=[
@@ -986,8 +986,8 @@ def main_gui(page: ft.Page):
         ref=pin_chip_ref,
         bgcolor=DS.BG_ELEVATED,
         border_radius=14,
-        padding=ft.padding.symmetric(horizontal=10, vertical=4),
-        border=ft.border.all(1, DS.BORDER_BRIGHT),
+        padding=ft.Padding.symmetric(horizontal=10, vertical=4),
+        border=ft.Border.all(1, DS.BORDER_BRIGHT),
         tooltip="Toggle always-on-top",
         on_click=handle_pin_toggle,
         content=ft.Row(
@@ -1059,8 +1059,8 @@ def main_gui(page: ft.Page):
     header = ft.Container(
         bgcolor=DS.BG_SURFACE,
         border_radius=DS.RADIUS_LG,
-        border=ft.border.all(1, DS.BORDER),
-        padding=ft.padding.symmetric(horizontal=DS.SP_LG, vertical=DS.SP_MD),
+        border=ft.Border.all(1, DS.BORDER),
+        padding=ft.Padding.symmetric(horizontal=DS.SP_LG, vertical=DS.SP_MD),
         content=ft.Row(
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -1082,8 +1082,8 @@ def main_gui(page: ft.Page):
         ref=footer_chip_ref,
         bgcolor=DS.BG_ELEVATED,
         border_radius=DS.RADIUS_SM,
-        padding=ft.padding.symmetric(horizontal=DS.SP_SM, vertical=DS.SP_XS),
-        border=ft.border.all(1, DS.BORDER_BRIGHT),
+        padding=ft.Padding.symmetric(horizontal=DS.SP_SM, vertical=DS.SP_XS),
+        border=ft.Border.all(1, DS.BORDER_BRIGHT),
         content=ft.Text(
             state.hotkey.upper(),
             size=11,
@@ -1096,8 +1096,8 @@ def main_gui(page: ft.Page):
     footer = ft.Container(
         bgcolor=DS.BG_SURFACE,
         border_radius=DS.RADIUS_LG,
-        border=ft.border.all(1, DS.BORDER),
-        padding=ft.padding.symmetric(horizontal=DS.SP_LG, vertical=DS.SP_MD),
+        border=ft.Border.all(1, DS.BORDER),
+        padding=ft.Padding.symmetric(horizontal=DS.SP_LG, vertical=DS.SP_MD),
         content=ft.Row(
             alignment=ft.MainAxisAlignment.CENTER,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -1121,9 +1121,9 @@ def main_gui(page: ft.Page):
     )
 
     body = ft.ListView(
-        scroll_mode=ft.ScrollMode.ADAPTIVE,
+        scroll=ft.ScrollMode.ADAPTIVE,
         spacing=DS.SP_SM,
-        padding=ft.padding.symmetric(horizontal=DS.SP_LG, vertical=DS.SP_MD),
+        padding=ft.Padding.symmetric(horizontal=DS.SP_LG, vertical=DS.SP_MD),
         controls=[
             status_panel,
             history_panel,
@@ -1138,7 +1138,7 @@ def main_gui(page: ft.Page):
         controls=[
             ft.Container(
                 content=header,
-                padding=ft.padding.only(
+                padding=ft.Padding.only(
                     left=DS.SP_LG,
                     right=DS.SP_LG,
                     top=DS.SP_LG,
@@ -1148,7 +1148,7 @@ def main_gui(page: ft.Page):
             ft.Container(content=body, expand=True),
             ft.Container(
                 content=footer,
-                padding=ft.padding.only(
+                padding=ft.Padding.only(
                     left=DS.SP_LG,
                     right=DS.SP_LG,
                     top=0,

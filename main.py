@@ -14,6 +14,7 @@ import time
 import platform
 import logging
 import datetime
+import unicodedata
 
 from platform_backend import get_backend
 
@@ -136,7 +137,7 @@ def process_audio(audio_data):
         transcript = "".join([s.text for s in segments]).strip()
 
         if transcript:
-            log.info(f"Transcribed: {transcript}")
+            log.info(f"Transcribed: {len(transcript)} chars")
             state.transcript_history.insert(0, transcript)
             if len(state.transcript_history) > 10: state.transcript_history.pop()
 
@@ -145,7 +146,7 @@ def process_audio(audio_data):
             time.sleep(0.3)  # Wait for the Right Alt key-up to fully propagate
 
             fg_title = backend.get_foreground_window_title()
-            log.info(f"Pasting to foreground window: {fg_title!r}")
+            log.info("Injecting text into foreground window")
 
             # On Windows, the keyboard hook intercepts synthetic keystrokes,
             # so we must remove it before typing and reinstall after.
@@ -160,8 +161,10 @@ def process_audio(audio_data):
             # Platform-specific cleanup (dismisses Alt menus on Windows, no-op elsewhere)
             backend.pre_injection_cleanup()
 
+            # Sanitize: strip control characters from transcription output
+            sanitized = ''.join(c for c in transcript if unicodedata.category(c)[0] != 'C' or c in '\n\t')
             # Type text directly into the focused window
-            backend.type_text(transcript + ' ')
+            backend.type_text(sanitized + ' ')
             time.sleep(0.1)
 
             # Restore the keyboard hook if it was removed
@@ -181,8 +184,8 @@ def process_audio(audio_data):
             if state.gui_update_callback: state.gui_update_callback("ready")
 
     except Exception as e:
-        state.status_text = f"Error: {str(e)}"
-        log.error(f"process_audio error: {e}")
+        state.status_text = "Transcription error — see walkie.log"
+        log.error(f"process_audio error: {e}", exc_info=True)
         if state.gui_update_callback: state.gui_update_callback("ready")
 
 
@@ -194,7 +197,7 @@ def get_ollama_models():
         if response.status_code == 200:
             models = response.json().get("models", [])
             return [m["name"] for m in models]
-    except:
+    except Exception:
         pass
     return []
 

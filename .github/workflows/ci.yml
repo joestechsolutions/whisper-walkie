@@ -87,3 +87,10 @@ jobs:
       - name: Run tests (Linux — xvfb)
         if: runner.os == 'Linux'
         run: xvfb-run pytest tests/ -v --tb=short
+
+      # Scan dependencies for known CVEs (runs once per OS, not critical path)
+      - name: Dependency vulnerability scan
+        if: matrix.python-version == '3.12'
+        run: |
+          pip install pip-audit --quiet
+          pip-audit -r requirements.txt || echo "::warning::pip-audit found vulnerabilities — review above output"

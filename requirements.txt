@@ -1,8 +1,8 @@
-sounddevice
-numpy
-faster-whisper
-pyperclip
-scipy
+sounddevice==0.5.5
+numpy==2.4.2
+faster-whisper==1.2.1
+pyperclip==1.11.0
+scipy==1.17.1
 flet==0.82.2
-requests
-pynput
+requests==2.32.5
+pynput==1.8.1

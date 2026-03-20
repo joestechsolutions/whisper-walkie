@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Tech Stack
 
 - **Python** (`main.py` for app logic/GUI, `platform_backend/` for OS-specific code)
-- **Flet** (v0.81.0, pinned) for the GUI (Flutter-based, cross-platform)
+- **Flet** (v0.82.2, pinned) for the GUI (Flutter-based, cross-platform)
 - **faster-whisper** for local speech-to-text (CTranslate2, CUDA on Windows/Linux, CPU on macOS)
 - **sounddevice** for audio capture
 - **pynput** for keyboard hooks on all platforms (unified — no platform-specific keyboard libraries)
@@ -69,7 +69,9 @@ platform_backend/
 
 4. **GUI** — Flet-based: StatusCard (ready/recording/processing/result states with live timer), transcription history panel, settings panel (hotkey/model/microphone dropdowns), header with pin-to-top, footer.
 
-5. **Background listener** — `run_transcription()` loads Whisper, installs keyboard hook via backend, opens a `sounddevice.InputStream`, loops forever.
+5. **First-run onboarding** — 3-step modal dialog (Welcome → Setup mic/hotkey → Try it). Detected via `~/.whisper-walkie/config.json`. On completion, saves `onboarding_complete: true` and applies user's mic/hotkey selections to AppState. Config helpers: `_get_config_path()`, `_load_config()`, `_save_config()`, `_is_first_run()`.
+
+6. **Background listener** — `run_transcription()` loads Whisper, installs keyboard hook via backend, opens a `sounddevice.InputStream`, loops forever.
 
 ## Critical Implementation Details
 
@@ -83,6 +85,10 @@ platform_backend/
 
 - **Linux display servers**: X11 works fully via pynput XRecord. Wayland has limited support — falls back to `wtype` for text injection and cannot get window titles. The backend detects `XDG_SESSION_TYPE` and warns.
 
-- **Logging**: File-based logging to `walkie.log` (overwritten each run). App logger is DEBUG, third-party loggers are WARNING.
+- **Logging**: File-based logging to `walkie.log` (overwritten each run). App logger is DEBUG, third-party loggers are WARNING. Transcription content is NOT logged (only char count) for privacy. Window titles are not logged.
+
+- **Input sanitization**: Transcription output is sanitized via `unicodedata.category()` to strip control characters before keyboard injection. Only `\n` and `\t` are preserved.
+
+- **CI security**: All GitHub Actions are SHA-pinned in both `ci.yml` and `build-exe.yml`. Dependencies are pinned to exact versions. `pip-audit` runs on every CI push.
 
 - **PyInstaller build**: `WhisperWalkie.spec` uses `--onedir` mode and builds on all 3 platforms via GitHub Actions. The Whisper base model is pre-downloaded into `./faster-whisper-base/` at build time and bundled into the output. At runtime, `_get_model_path()` in main.py checks for the bundled model via `sys._MEIPASS`, falling back to auto-download if not bundled.

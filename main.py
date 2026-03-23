@@ -40,7 +40,7 @@ log = logging.getLogger("walkie")
 log.setLevel(logging.DEBUG)  # Our own logger stays at DEBUG
 
 # --- Configuration ---
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.1.6"
 DEFAULT_HOTKEY = 'right alt'
 MODEL_SIZE = 'base'
 SAMPLE_RATE = 16000
@@ -1030,6 +1030,13 @@ class StatusCard:
 
     # State descriptors
     STATES = {
+        "loading": {
+            "label":     "Loading",
+            "sublabel":  "Loading speech model — this may take a moment...",
+            "color":     DS.STATE_PROCESSING,
+            "icon":      ft.Icons.HOURGLASS_TOP_ROUNDED,
+            "badge_bg":  "#2a1a00",
+        },
         "ready": {
             "label":     "Ready",
             "sublabel":  "Hold Right Alt to speak",
@@ -1256,7 +1263,14 @@ class StatusCard:
         if state_key not in self.STATES:
             return
         self._state_key = state_key
-        s = self.STATES[state_key]
+        s = dict(self.STATES[state_key])  # copy to avoid mutating class dict
+
+        # Use the actual configured hotkey in sublabels
+        hotkey_label = state.hotkey.upper() if hasattr(state, 'hotkey') else "RIGHT ALT"
+        if state_key == "ready":
+            s["sublabel"] = f"Hold {hotkey_label} to speak"
+        elif state_key == "recording":
+            s["sublabel"] = f"Release {hotkey_label} when done"
 
         self._apply_color(
             color=s["color"],
@@ -1495,19 +1509,10 @@ def main_gui(page: ft.Page):
     # ----------------------------------------------------------------
 
     hotkey_ref = ft.Ref()
-    model_ref  = ft.Ref()
     device_ref = ft.Ref()
 
     HOTKEY_OPTIONS_KEYS = ['right alt', 'scroll lock', 'pause', 'f13', 'f14', 'insert', 'right ctrl']
     hotkey_options = [(k, k.upper()) for k in HOTKEY_OPTIONS_KEYS]
-
-    # Ollama models from live API
-    ollama_models = get_ollama_models()
-    if ollama_models:
-        model_options = [(m, m) for m in ollama_models]
-        state.selected_ollama_model = ollama_models[0]
-    else:
-        model_options = [("none", "No models found")]
 
     # Audio input devices from sounddevice
     try:
@@ -1532,12 +1537,6 @@ def main_gui(page: ft.Page):
                     content.value = new_key.upper()
             page.update()
             log.info(f"Hotkey changed to: {new_key}")
-
-    def handle_model_change(e):
-        new_model = model_ref.current.value if model_ref.current else None
-        if new_model and new_model != "none":
-            state.selected_ollama_model = new_model
-            log.info(f"AI model changed to: {new_model}")
 
     def handle_device_change(e):
         new_device_str = device_ref.current.value if device_ref.current else None
@@ -1593,18 +1592,17 @@ def main_gui(page: ft.Page):
                     initial_value=state.hotkey,
                 ),
                 _styled_dropdown(
-                    "AI Model",
-                    model_options,
-                    model_ref,
-                    on_change=handle_model_change,
-                    initial_value=model_options[0][0] if model_options else None,
-                ),
-                _styled_dropdown(
                     "Microphone",
                     audio_input_devices if audio_input_devices else [("default", "System Default")],
                     device_ref,
                     on_change=handle_device_change,
                     initial_value=initial_device_value,
+                ),
+                ft.Text(
+                    "Select your headset or built-in microphone",
+                    size=10,
+                    color=DS.TEXT_MUTED,
+                    italic=True,
                 ),
             ],
         ),
@@ -1874,6 +1872,15 @@ def main_gui(page: ft.Page):
     try:
         devices = sd.query_devices()
         input_device_found = False
+
+        # Priority keywords vary by platform
+        if platform.system() == "Linux":
+            priority_keywords = ["pulse", "pipewire", "default", "hda intel", "analog"]
+        elif platform.system() == "Darwin":
+            priority_keywords = ["macbook", "built-in", "default"]
+        else:
+            priority_keywords = ["realtek", "astro"]
+
         for i, d in enumerate(devices):
             if d['max_input_channels'] > 0:
                 if not input_device_found:
@@ -1881,8 +1888,9 @@ def main_gui(page: ft.Page):
                     state.device_sample_rate = int(d['default_samplerate'])
                     input_device_found = True
 
-                # High priority devices
-                if "Realtek" in d['name'] or "Astro" in d['name']:
+                # Check if device name matches any priority keyword
+                name_lower = d['name'].lower()
+                if any(kw in name_lower for kw in priority_keywords):
                     state.selected_device_index = i
                     state.device_sample_rate = int(d['default_samplerate'])
                     break
@@ -1894,7 +1902,11 @@ def main_gui(page: ft.Page):
     # ----------------------------------------------------------------
 
     def run_transcription():
+        if state.gui_update_callback:
+            state.gui_update_callback("loading")
         load_whisper()
+        if state.gui_update_callback:
+            state.gui_update_callback("ready")
 
         # Build the set of expected key names and scan codes for the hotkey
         _expected_names = backend.get_hotkey_names(state.hotkey)

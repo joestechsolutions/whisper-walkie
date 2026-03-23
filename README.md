@@ -35,7 +35,7 @@ Choose your platform and download — no Python or technical setup required:
 
 **Windows:** Run the installer. If Windows SmartScreen appears, click **"More info"** → **"Run anyway"** (the app is [open source](https://github.com/joestechsolutions/whisper-walkie) and safe).
 
-**macOS:** Open the `.zip`, drag to Applications. On first launch, go to **System Settings → Privacy & Security → Accessibility** and add Whisper Walkie.
+**macOS:** Open the `.zip`, drag to Applications. If macOS says "developer cannot be verified," go to **System Settings → Privacy & Security** and click **"Open Anyway."** Then grant Accessibility permissions in **Privacy & Security → Accessibility.**
 
 **Linux:** Extract the `.tar.gz` and run. For best results, install xdotool:
 ```bash
@@ -85,7 +85,7 @@ https://github.com/user-attachments/assets/682d5a2b-b35b-41cd-ac61-77a16de6ad6c
 - **Configurable Hotkey** — Right Alt, Scroll Lock, Pause, F13, F14, Insert, or Right Ctrl.
 - **Transcription History** — Last 10 transcriptions with timestamps and copy buttons.
 - **Works Offline** — AI model is bundled. No internet needed after download.
-- **99+ Languages** — Whisper auto-detects the spoken language.
+- **99 Languages** — Whisper auto-detects the spoken language. Accuracy varies by language — English is strongest.
 
 ---
 
@@ -258,9 +258,19 @@ Contributions welcome! This is an open-source project by [Joe's Tech Solutions L
 
 CI automatically tests your changes on Windows, macOS, and Linux.
 
-## How It's Built
+## Why I Built This
 
-This project was built using **AI-assisted development** with [Claude](https://claude.ai) by Anthropic. The developer directed architecture and requirements while AI handled implementation, cross-platform compatibility, and iteration. [Read more →](https://joestechsolutions.com/whisper-walkie)
+I was using tools like [Willow](https://heywillow.io) and [OpenWhispr](https://openwhispr.com/) for voice transcription. They worked — but every word I spoke was going to the cloud, where other companies could use it to train their models. That didn't sit right with me.
+
+I was already running [Ollama](https://ollama.com) and [Open WebUI](https://openwebui.com) for local LLMs. I wanted the same thing for voice: **fast, private, and completely offline.** So I built it.
+
+### Why it's free
+
+I built Whisper Walkie for people like me who care about privacy. I'm giving it away because I want to contribute something real to the open source community — working software for Windows, macOS, and Linux that anyone can use, inspect, and build on.
+
+### How it's built
+
+Whisper Walkie was built entirely using the **agentic AI workflow** with [Claude Code](https://claude.com/claude-code) from Anthropic — proving that one developer with the right tools can ship production-quality, cross-platform software that stands up against anything built by a traditional engineering team. [Read more →](https://joestechsolutions.com/whisper-walkie)
 
 ## License
 

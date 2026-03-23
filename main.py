@@ -1,7 +1,15 @@
 import os
 import sys
+import builtins
 import queue
 import threading
+
+# Fix for PyInstaller frozen builds: Flet's error handler uses `exit()` which
+# isn't available in frozen apps (it's a `site` module convenience function).
+# Patching it here prevents a NameError crash if flet_desktop is missing.
+if not hasattr(builtins, 'exit'):
+    builtins.exit = sys.exit
+
 import numpy as np
 import sounddevice as sd
 import pyperclip

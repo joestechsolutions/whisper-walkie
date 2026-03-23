@@ -66,6 +66,17 @@ jobs:
         run: pyinstaller WhisperWalkie.spec
 
       # -----------------------------------------------------------------------
+      # Copy install scripts to dist root so they're at the top level of the
+      # archive, not buried inside _internal/.
+      # -----------------------------------------------------------------------
+      - name: Copy install scripts to dist root
+        if: runner.os == 'Linux' || runner.os == 'macOS'
+        run: |
+          cp install-linux.sh dist/WhisperWalkie/ 2>/dev/null || true
+          cp install-macos.sh dist/WhisperWalkie/ 2>/dev/null || true
+          chmod +x dist/WhisperWalkie/install-*.sh 2>/dev/null || true
+
+      # -----------------------------------------------------------------------
       # Package: zip / tar.gz (all platforms)
       # -----------------------------------------------------------------------
       - name: Package release (Windows)

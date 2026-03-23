@@ -39,7 +39,7 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y --no-install-recommends \
-            libxtst-dev libx11-dev portaudio19-dev
+            libxtst-dev libx11-dev portaudio19-dev libportaudio2
 
       # NSIS is available on GitHub-hosted Windows runners via Chocolatey.
       # Installing here rather than using a pre-installed version ensures we

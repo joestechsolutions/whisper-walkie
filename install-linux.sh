@@ -1,7 +1,6 @@
 #!/bin/bash
 # Whisper Walkie — Linux Installer
-# Installs system dependencies, creates a desktop shortcut, and makes
-# the app ready to launch from your application menu.
+# Creates a desktop shortcut and installs optional dependencies.
 # Run this from inside the extracted WhisperWalkie folder.
 
 set -e
@@ -20,39 +19,18 @@ fi
 echo "Installing Whisper Walkie..."
 echo ""
 
-# ── Install system dependencies ──────────────────────────────────────
-MISSING_DEPS=""
-
-# PortAudio is required for microphone access
-if ! ldconfig -p 2>/dev/null | grep -q libportaudio; then
-    MISSING_DEPS="$MISSING_DEPS libportaudio2"
-fi
-
-# xdotool is optional but recommended for window title detection
+# ── Install optional system dependency ───────────────────────────────
+# xdotool enables window title detection (optional but recommended)
 if ! command -v xdotool &>/dev/null; then
-    MISSING_DEPS="$MISSING_DEPS xdotool"
-fi
-
-if [ -n "$MISSING_DEPS" ]; then
-    echo "Installing system dependencies:$MISSING_DEPS"
+    echo "Installing xdotool (optional, for window title detection)..."
     if command -v apt &>/dev/null; then
-        sudo apt install -y $MISSING_DEPS
+        sudo apt install -y xdotool
     elif command -v dnf &>/dev/null; then
-        # Fedora/RHEL: package names differ
-        FEDORA_DEPS=""
-        echo "$MISSING_DEPS" | grep -q "libportaudio2" && FEDORA_DEPS="$FEDORA_DEPS portaudio"
-        echo "$MISSING_DEPS" | grep -q "xdotool" && FEDORA_DEPS="$FEDORA_DEPS xdotool"
-        sudo dnf install -y $FEDORA_DEPS
+        sudo dnf install -y xdotool
     elif command -v pacman &>/dev/null; then
-        # Arch: package names differ
-        ARCH_DEPS=""
-        echo "$MISSING_DEPS" | grep -q "libportaudio2" && ARCH_DEPS="$ARCH_DEPS portaudio"
-        echo "$MISSING_DEPS" | grep -q "xdotool" && ARCH_DEPS="$ARCH_DEPS xdotool"
-        sudo pacman -S --noconfirm $ARCH_DEPS
+        sudo pacman -S --noconfirm xdotool
     else
-        echo "Could not detect package manager. Please install manually:"
-        echo "  PortAudio (required): libportaudio2 / portaudio"
-        echo "  xdotool (optional): xdotool"
+        echo "  Could not auto-install xdotool. Install manually if needed."
     fi
     echo ""
 fi

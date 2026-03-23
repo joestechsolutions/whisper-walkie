@@ -1,6 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 import os
+import glob
+import sys
 
 datas = []
 binaries = []
@@ -15,6 +17,16 @@ tmp_ret = collect_all('sounddevice')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('scipy')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+
+# Bundle PortAudio shared library so Linux users don't need to install it.
+# On macOS, PortAudio is bundled by sounddevice. On Windows, it's included.
+if sys.platform.startswith('linux'):
+    pa_paths = glob.glob('/usr/lib/x86_64-linux-gnu/libportaudio*') + \
+               glob.glob('/usr/lib/aarch64-linux-gnu/libportaudio*') + \
+               glob.glob('/usr/lib/libportaudio*')
+    for pa in pa_paths:
+        if os.path.isfile(pa):
+            binaries += [(pa, '.')]
 
 # Bundle the app icon for Linux desktop shortcut support.
 icon_png = os.path.join(os.getcwd(), 'assets', 'icon-512.png')

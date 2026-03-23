@@ -21,10 +21,11 @@ icon_png = os.path.join(os.getcwd(), 'assets', 'icon-512.png')
 if os.path.isfile(icon_png):
     datas += [(icon_png, '.')]
 
-# Bundle the Linux install script for desktop shortcut creation.
-install_script = os.path.join(os.getcwd(), 'install-linux.sh')
-if os.path.isfile(install_script):
-    datas += [(install_script, '.')]
+# Bundle platform install scripts for easy onboarding.
+for script in ['install-linux.sh', 'install-macos.sh']:
+    script_path = os.path.join(os.getcwd(), script)
+    if os.path.isfile(script_path):
+        datas += [(script_path, '.')]
 
 # Bundle the pre-downloaded Whisper base model so the app works offline.
 # The model directory is expected at ./faster-whisper-base/ at build time

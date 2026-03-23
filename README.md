@@ -35,7 +35,13 @@ Choose your platform and download — no Python or technical setup required:
 
 **Windows:** Run the installer. If Windows SmartScreen appears, click **"More info"** → **"Run anyway"** (the app is [open source](https://github.com/joestechsolutions/whisper-walkie) and safe).
 
-**macOS:** Open the `.zip`, drag to Applications. If macOS says "developer cannot be verified," go to **System Settings → Privacy & Security** and click **"Open Anyway."** Then grant Accessibility permissions in **Privacy & Security → Accessibility.**
+**macOS:** Extract the `.zip` and run the installer:
+```bash
+unzip WhisperWalkie-macos.zip
+cd WhisperWalkie
+./install-macos.sh
+```
+This installs to `/Applications`, clears the Gatekeeper warning, and creates a Launchpad/Spotlight entry. Then grant Accessibility permissions in **System Settings → Privacy & Security → Accessibility.**
 
 **Linux:** Extract and launch:
 ```bash

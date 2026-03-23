@@ -1,6 +1,7 @@
 #!/bin/bash
-# Whisper Walkie — Linux Desktop Installer
-# Creates a .desktop shortcut so the app appears in your application launcher.
+# Whisper Walkie — Linux Installer
+# Installs system dependencies, creates a desktop shortcut, and makes
+# the app ready to launch from your application menu.
 # Run this from inside the extracted WhisperWalkie folder.
 
 set -e
@@ -16,10 +17,50 @@ if [ ! -f "$APP_BIN" ]; then
     exit 1
 fi
 
-# Ensure the binary is executable
+echo "Installing Whisper Walkie..."
+echo ""
+
+# ── Install system dependencies ──────────────────────────────────────
+MISSING_DEPS=""
+
+# PortAudio is required for microphone access
+if ! ldconfig -p 2>/dev/null | grep -q libportaudio; then
+    MISSING_DEPS="$MISSING_DEPS libportaudio2"
+fi
+
+# xdotool is optional but recommended for window title detection
+if ! command -v xdotool &>/dev/null; then
+    MISSING_DEPS="$MISSING_DEPS xdotool"
+fi
+
+if [ -n "$MISSING_DEPS" ]; then
+    echo "Installing system dependencies:$MISSING_DEPS"
+    if command -v apt &>/dev/null; then
+        sudo apt install -y $MISSING_DEPS
+    elif command -v dnf &>/dev/null; then
+        # Fedora/RHEL: package names differ
+        FEDORA_DEPS=""
+        echo "$MISSING_DEPS" | grep -q "libportaudio2" && FEDORA_DEPS="$FEDORA_DEPS portaudio"
+        echo "$MISSING_DEPS" | grep -q "xdotool" && FEDORA_DEPS="$FEDORA_DEPS xdotool"
+        sudo dnf install -y $FEDORA_DEPS
+    elif command -v pacman &>/dev/null; then
+        # Arch: package names differ
+        ARCH_DEPS=""
+        echo "$MISSING_DEPS" | grep -q "libportaudio2" && ARCH_DEPS="$ARCH_DEPS portaudio"
+        echo "$MISSING_DEPS" | grep -q "xdotool" && ARCH_DEPS="$ARCH_DEPS xdotool"
+        sudo pacman -S --noconfirm $ARCH_DEPS
+    else
+        echo "Could not detect package manager. Please install manually:"
+        echo "  PortAudio (required): libportaudio2 / portaudio"
+        echo "  xdotool (optional): xdotool"
+    fi
+    echo ""
+fi
+
+# ── Make binary executable ───────────────────────────────────────────
 chmod +x "$APP_BIN"
 
-# Create .desktop entry
+# ── Create desktop shortcut ─────────────────────────────────────────
 mkdir -p "$(dirname "$DESKTOP_FILE")"
 cat > "$DESKTOP_FILE" << EOF
 [Desktop Entry]
@@ -33,8 +74,10 @@ Terminal=false
 EOF
 
 echo "Whisper Walkie installed successfully!"
-echo "  Binary: $APP_BIN"
+echo ""
+echo "  Binary:   $APP_BIN"
 echo "  Shortcut: $DESKTOP_FILE"
 echo ""
-echo "You can now launch Whisper Walkie from your application menu."
-echo "Or run it directly: $APP_BIN"
+echo "You can now:"
+echo "  - Find 'Whisper Walkie' in your application menu"
+echo "  - Or run directly: $APP_BIN"

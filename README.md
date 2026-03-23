@@ -43,8 +43,12 @@ cd WhisperWalkie
 ```
 This installs to `/Applications`, clears the Gatekeeper warning, and creates a Launchpad/Spotlight entry. Then grant Accessibility permissions in **System Settings → Privacy & Security → Accessibility.**
 
-**Linux:** Extract and launch:
+**Linux:** Install system dependencies, then extract and launch:
 ```bash
+# Install required audio library + optional text injection tool
+sudo apt install libportaudio2 xdotool   # Debian/Ubuntu
+
+# Extract and run
 tar xzf WhisperWalkie-linux.tar.gz
 cd WhisperWalkie
 ./WhisperWalkie
@@ -53,11 +57,6 @@ cd WhisperWalkie
 **Create a desktop shortcut** (so it appears in your app launcher):
 ```bash
 ./install-linux.sh
-```
-
-For best results, install xdotool:
-```bash
-sudo apt install xdotool   # Debian/Ubuntu
 ```
 
 ### 2. Choose your microphone

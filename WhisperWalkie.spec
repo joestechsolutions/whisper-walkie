@@ -16,6 +16,16 @@ datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('scipy')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
+# Bundle the app icon for Linux desktop shortcut support.
+icon_png = os.path.join(os.getcwd(), 'assets', 'icon-512.png')
+if os.path.isfile(icon_png):
+    datas += [(icon_png, '.')]
+
+# Bundle the Linux install script for desktop shortcut creation.
+install_script = os.path.join(os.getcwd(), 'install-linux.sh')
+if os.path.isfile(install_script):
+    datas += [(install_script, '.')]
+
 # Bundle the pre-downloaded Whisper base model so the app works offline.
 # The model directory is expected at ./faster-whisper-base/ at build time
 # (the CI workflow downloads it before running PyInstaller).

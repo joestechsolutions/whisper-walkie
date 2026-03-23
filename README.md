@@ -37,7 +37,19 @@ Choose your platform and download — no Python or technical setup required:
 
 **macOS:** Open the `.zip`, drag to Applications. If macOS says "developer cannot be verified," go to **System Settings → Privacy & Security** and click **"Open Anyway."** Then grant Accessibility permissions in **Privacy & Security → Accessibility.**
 
-**Linux:** Extract the `.tar.gz` and run. For best results, install xdotool:
+**Linux:** Extract and launch:
+```bash
+tar xzf WhisperWalkie-linux.tar.gz
+cd WhisperWalkie
+./WhisperWalkie
+```
+
+**Create a desktop shortcut** (so it appears in your app launcher):
+```bash
+./install-linux.sh
+```
+
+For best results, install xdotool:
 ```bash
 sudo apt install xdotool   # Debian/Ubuntu
 ```

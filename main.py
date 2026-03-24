@@ -186,7 +186,7 @@ log = logging.getLogger("walkie")
 log.setLevel(logging.DEBUG)  # Our own logger stays at DEBUG
 
 # --- Configuration ---
-APP_VERSION = "1.2.1"
+APP_VERSION = "1.2.2"
 DEFAULT_HOTKEY = 'right alt'
 MODEL_SIZE = 'base'
 SAMPLE_RATE = 16000

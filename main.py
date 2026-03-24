@@ -1,6 +1,152 @@
 import os
-import shutil
 import sys
+import platform
+
+# ---------------------------------------------------------------------------
+# Wayland auto-setup — MUST run before any pynput/platform_backend imports.
+# pynput's uinput backend (used on Wayland) crashes at import time if the
+# user lacks /dev/input/ access.  This block detects the problem and fixes
+# it via pkexec + sg re-exec before the rest of the app loads.
+# ---------------------------------------------------------------------------
+
+def _early_wayland_setup() -> None:
+    """Auto-fix Wayland deps before any pynput import can occur.
+
+    Three scenarios handled:
+    1. Everything OK — return immediately
+    2. User in input group on disk but not in current process — sg re-exec
+       (no password prompt, no pkexec — just activates the group)
+    3. Missing wtype or not in input group at all — pkexec to install/add,
+       then sg re-exec if input group was added
+    """
+    if platform.system() != "Linux":
+        return
+    if os.environ.get("XDG_SESSION_TYPE", "").lower() != "wayland":
+        return
+
+    import json
+    import shutil
+    import subprocess
+
+    # Config helpers (self-contained — no dependency on later code)
+    config_path = os.path.join(os.path.expanduser("~"), ".whisper-walkie", "config.json")
+
+    def _load_cfg() -> dict:
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def _save_cfg(data: dict) -> None:
+        os.makedirs(os.path.dirname(config_path), exist_ok=True)
+        try:
+            with open(config_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+        except Exception:
+            pass
+
+    def _sg_reexec() -> None:
+        """Re-exec the app via sg to activate the input group immediately."""
+        sg = shutil.which("sg")
+        if not sg:
+            return
+        import shlex
+        if getattr(sys, 'frozen', False):
+            # PyInstaller binary — sys.executable IS the app
+            reexec_args = [sys.executable] + sys.argv[1:]
+        else:
+            # Running from source — need python interpreter + script
+            reexec_args = [sys.executable] + sys.argv
+        for i, a in enumerate(reexec_args):
+            if not os.path.isabs(a) and os.path.exists(a):
+                reexec_args[i] = os.path.abspath(a)
+        # Preserve critical env vars through sg's new shell.
+        # sg -c runs a command in a new shell that may not inherit env.
+        env_prefix = "PYNPUT_BACKEND_KEYBOARD=uinput"
+        cmd_str = " ".join(shlex.quote(a) for a in reexec_args)
+        args_str = env_prefix + " " + cmd_str
+        os.execvp(sg, [sg, "input", "-c", args_str])
+        # execvp replaces the process — never returns on success
+
+    # --- Check what's needed ---
+    needs_wtype = shutil.which("wtype") is None
+    dumpkeys_cache = os.path.join(os.path.expanduser("~"), ".whisper-walkie", "dumpkeys.cache")
+    needs_dumpkeys_cache = not os.path.isfile(dumpkeys_cache)
+
+    # Check input group: is the user in the group on disk?  In the process?
+    process_has_input_group = False
+    user_in_input_group_on_disk = False
+    username = ""
+    try:
+        import grp
+        import pwd
+        input_gid = grp.getgrnam("input").gr_gid
+        process_has_input_group = input_gid in os.getgroups()
+        username = pwd.getpwuid(os.getuid()).pw_name
+        user_in_input_group_on_disk = username in grp.getgrnam("input").gr_mem
+    except (KeyError, Exception):
+        pass
+
+    # --- Scenario 1: Everything OK ---
+    if not needs_wtype and not needs_dumpkeys_cache and process_has_input_group:
+        cfg = _load_cfg()
+        if not cfg.get("wayland_setup_complete"):
+            cfg["wayland_setup_complete"] = True
+            _save_cfg(cfg)
+        return
+
+    # --- Scenario 2: User in group on disk but process doesn't have it ---
+    # This happens after usermod but before logout/login.
+    # Just sg re-exec — no pkexec, no password prompt.
+    # Also need dumpkeys cache to exist.
+    if not needs_wtype and not needs_dumpkeys_cache and user_in_input_group_on_disk and not process_has_input_group:
+        cfg = _load_cfg()
+        cfg["wayland_setup_complete"] = True
+        _save_cfg(cfg)
+        _sg_reexec()
+        return  # sg failed — app continues, hotkey may not work
+
+    # --- Scenario 3: Need to install something via pkexec ---
+    bundle_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    setup_script = os.path.join(bundle_dir, 'setup-wayland.sh')
+    if not os.path.isfile(setup_script):
+        setup_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'setup-wayland.sh')
+    if not os.path.isfile(setup_script):
+        return
+
+    pkexec = shutil.which("pkexec")
+    if not pkexec or not username:
+        return
+
+    try:
+        result = subprocess.run(
+            [pkexec, setup_script, username],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode != 0:
+            return
+
+        cfg = _load_cfg()
+        cfg["wayland_setup_complete"] = True
+        _save_cfg(cfg)
+
+        # If input group was just added, re-exec to activate it
+        if not process_has_input_group:
+            _sg_reexec()
+
+    except (subprocess.TimeoutExpired, Exception):
+        pass
+
+
+_early_wayland_setup()
+
+# ---------------------------------------------------------------------------
+# Normal imports — safe now that Wayland deps are resolved
+# ---------------------------------------------------------------------------
+
 import builtins
 import queue
 import threading
@@ -20,7 +166,6 @@ import flet as ft
 import requests
 import json
 import time
-import platform
 import logging
 import datetime
 import unicodedata
@@ -1329,122 +1474,6 @@ class StatusCard:
         self._elapsed_sec = 0
 
 
-# ---------------------------------------------------------------------------
-# Wayland setup check — shows an in-app dialog if dependencies are missing
-# ---------------------------------------------------------------------------
-
-def _check_wayland_setup() -> list[str]:
-    """Return a list of setup issues for Wayland sessions, or [] if OK."""
-    if platform.system() != "Linux":
-        return []
-    if os.environ.get("XDG_SESSION_TYPE", "").lower() != "wayland":
-        return []
-
-    issues = []
-
-    # Check input group membership
-    try:
-        import grp
-        input_gid = grp.getgrnam("input").gr_gid
-        if input_gid not in os.getgroups():
-            issues.append("input_group")
-    except KeyError:
-        pass
-
-    # Check wtype
-    if not shutil.which("wtype"):
-        issues.append("wtype")
-
-    return issues
-
-
-def _build_wayland_dialog(page: ft.Page, issues: list[str]) -> ft.AlertDialog:
-    """Build an AlertDialog explaining required Wayland setup steps."""
-
-    steps = []
-    if "input_group" in issues:
-        steps.append(
-            ft.Container(
-                bgcolor=DS.BG_ELEVATED,
-                border_radius=DS.RAD_SM,
-                padding=ft.Padding.all(12),
-                content=ft.Column(spacing=4, controls=[
-                    ft.Text("Add yourself to the input group:", size=13, color=DS.TEXT_SECONDARY),
-                    ft.Container(
-                        bgcolor=DS.BG_BASE,
-                        border_radius=4,
-                        padding=ft.Padding.all(8),
-                        content=ft.Text(
-                            "sudo usermod -aG input $USER",
-                            size=12, color=DS.ACCENT, font_family="monospace", selectable=True,
-                        ),
-                    ),
-                    ft.Text("Then log out and log back in.", size=11, color=DS.TEXT_MUTED, italic=True),
-                ]),
-            )
-        )
-
-    if "wtype" in issues:
-        steps.append(
-            ft.Container(
-                bgcolor=DS.BG_ELEVATED,
-                border_radius=DS.RAD_SM,
-                padding=ft.Padding.all(12),
-                content=ft.Column(spacing=4, controls=[
-                    ft.Text("Install wtype for text injection:", size=13, color=DS.TEXT_SECONDARY),
-                    ft.Container(
-                        bgcolor=DS.BG_BASE,
-                        border_radius=4,
-                        padding=ft.Padding.all(8),
-                        content=ft.Text(
-                            "sudo apt install wtype",
-                            size=12, color=DS.ACCENT, font_family="monospace", selectable=True,
-                        ),
-                    ),
-                ]),
-            )
-        )
-
-    tip_text = (
-        "Or run ./install-linux.sh — it handles everything automatically."
-    )
-
-    def _close(e):
-        dialog.open = False
-        page.update()
-
-    dialog = ft.AlertDialog(
-        modal=True,
-        title=ft.Row(
-            controls=[
-                ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color="#f59e0b", size=24),
-                ft.Text("Wayland Setup Needed", size=18, weight=ft.FontWeight.W_600, color=DS.TEXT_PRIMARY),
-            ],
-            spacing=DS.SP_SM,
-        ),
-        content=ft.Container(
-            width=380,
-            content=ft.Column(
-                spacing=DS.SP_MD,
-                tight=True,
-                controls=[
-                    ft.Text(
-                        "Whisper Walkie needs a couple of things to work on Wayland:",
-                        size=13, color=DS.TEXT_SECONDARY,
-                    ),
-                    *steps,
-                    ft.Text(tip_text, size=11, color=DS.TEXT_MUTED, italic=True),
-                ],
-            ),
-        ),
-        actions=[
-            ft.TextButton("Got it", on_click=_close, style=ft.ButtonStyle(color=DS.PRIMARY)),
-        ],
-        actions_alignment=ft.MainAxisAlignment.END,
-        bgcolor=DS.BG_SURFACE,
-        shape=ft.RoundedRectangleBorder(radius=DS.RAD_LG),
-    )
-    return dialog
 
 
 # ---------------------------------------------------------------------------
@@ -1499,15 +1528,6 @@ def main_gui(page: ft.Page):
         onboarding_dialog = _build_onboarding_dialog(page)
         page.overlay.append(onboarding_dialog)
         onboarding_dialog.open = True
-
-    # ---- Wayland setup check ----
-    wayland_issues = _check_wayland_setup()
-    if wayland_issues:
-        wayland_dialog = _build_wayland_dialog(page, wayland_issues)
-        page.overlay.append(wayland_dialog)
-        # Show after onboarding (or immediately if not first run)
-        if not _is_first_run():
-            wayland_dialog.open = True
 
     # ---- Footer hotkey chip ref — updates when hotkey changes ----
     footer_chip_ref = ft.Ref()

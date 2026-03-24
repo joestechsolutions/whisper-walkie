@@ -95,7 +95,10 @@ class LinuxBackend(PlatformBackend):
         self._is_wayland: bool = session_type == "wayland"
 
         if self._is_wayland:
-            pynput_backend = os.environ.get("PYNPUT_BACKEND", "xorg")
+            pynput_backend = os.environ.get(
+                "PYNPUT_BACKEND_KEYBOARD",
+                os.environ.get("PYNPUT_BACKEND", "xorg"),
+            )
             if pynput_backend == "uinput":
                 # Verify the user has /dev/input/ access
                 import grp

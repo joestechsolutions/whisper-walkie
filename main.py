@@ -228,19 +228,32 @@ backend = get_backend()
 
 # --- Transcription Logic ---
 
+def _detect_device() -> tuple[str, str]:
+    """Pick the best device/compute_type without a slow failed-load cycle.
+
+    Returns (device, compute_type).  On macOS always CPU.  On Windows/Linux
+    we probe for a working CUDA runtime via ctranslate2 before committing.
+    """
+    if platform.system() == "Darwin":
+        return "cpu", "int8"
+
+    # Fast probe: ctranslate2 (used by faster-whisper) exposes device list
+    try:
+        import ctranslate2
+        if "cuda" in (d.lower() for d in ctranslate2.get_supported_compute_types("cuda")):
+            return "cuda", "float16"
+    except Exception:
+        pass
+
+    return "cpu", "int8"
+
+
 def load_whisper():
     model_path = _get_model_path()
-    print(f"Loading '{model_path}' Whisper model...")
-    device = "cpu" if platform.system() == "Darwin" else "cuda"
-    compute_type = "float16" if device == "cuda" else "int8"
-
-    try:
-        state.whisper_model = WhisperModel(model_path, device=device, compute_type=compute_type)
-        print(f"Model loaded successfully on {device.upper()}.")
-    except Exception as e:
-        print(f"Failed to load on {device.upper()}, falling back to CPU. Error: {e}")
-        state.whisper_model = WhisperModel(model_path, device="cpu", compute_type="int8")
-        print("Model loaded successfully on CPU.")
+    device, compute_type = _detect_device()
+    print(f"Loading '{model_path}' Whisper model on {device.upper()}...")
+    state.whisper_model = WhisperModel(model_path, device=device, compute_type=compute_type)
+    print(f"Model loaded successfully on {device.upper()}.")
 
 def audio_callback(indata, frames, time, status):
     if status:

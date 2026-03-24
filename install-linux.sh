@@ -35,6 +35,38 @@ if ! command -v xdotool &>/dev/null; then
     echo ""
 fi
 
+# ── Wayland support ─────────────────────────────────────────────────
+# On Wayland sessions, the hotkey listener needs /dev/input/ access and
+# text injection requires wtype instead of xdotool.
+if [ "${XDG_SESSION_TYPE:-}" = "wayland" ]; then
+    echo "Wayland session detected. Setting up Wayland support..."
+    echo ""
+
+    # wtype for text injection on Wayland
+    if ! command -v wtype &>/dev/null; then
+        echo "Installing wtype (required for text injection on Wayland)..."
+        if command -v apt &>/dev/null; then
+            sudo apt install -y wtype
+        elif command -v dnf &>/dev/null; then
+            sudo dnf install -y wtype
+        elif command -v pacman &>/dev/null; then
+            sudo pacman -S --noconfirm wtype
+        else
+            echo "  Could not auto-install wtype. Install manually if needed."
+        fi
+        echo ""
+    fi
+
+    # input group for /dev/input/ access (required for hotkey detection)
+    if ! groups | grep -q '\binput\b'; then
+        echo "Adding $USER to 'input' group (required for hotkey detection on Wayland)..."
+        sudo usermod -aG input "$USER"
+        echo ""
+        echo "  NOTE: You must log out and log back in for the input group to take effect."
+        echo ""
+    fi
+fi
+
 # ── Make binary executable ───────────────────────────────────────────
 chmod +x "$APP_BIN"
 

@@ -22,6 +22,14 @@ datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('Xlib')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
+# evdev is required for pynput's uinput backend (Wayland support)
+if sys.platform.startswith('linux'):
+    try:
+        tmp_ret = collect_all('evdev')
+        datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+    except Exception:
+        pass  # evdev may not be installed on non-Linux build hosts
+
 # Bundle PortAudio shared library so Linux users don't need to install it.
 # On macOS, PortAudio is bundled by sounddevice. On Windows, it's included.
 if sys.platform.startswith('linux'):

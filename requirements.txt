@@ -7,3 +7,4 @@ flet[desktop]==0.82.2
 requests==2.32.5
 pynput==1.8.1
 python-xlib==0.33; sys_platform == 'linux'
+evdev>=1.7.0; sys_platform == 'linux'

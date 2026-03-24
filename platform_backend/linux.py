@@ -95,12 +95,34 @@ class LinuxBackend(PlatformBackend):
         self._is_wayland: bool = session_type == "wayland"
 
         if self._is_wayland:
-            log.warning(
-                "LinuxBackend: Wayland session detected.  "
-                "Global keyboard hooks may require elevated permissions "
-                "(/dev/input/ access) and some features (e.g. active-window "
-                "title) are not available."
-            )
+            pynput_backend = os.environ.get("PYNPUT_BACKEND", "xorg")
+            if pynput_backend == "uinput":
+                # Verify the user has /dev/input/ access
+                import grp
+                try:
+                    input_gid = grp.getgrnam("input").gr_gid
+                    user_groups = os.getgroups()
+                    if input_gid not in user_groups:
+                        log.warning(
+                            "LinuxBackend: Wayland session with uinput backend, but user "
+                            "is not in the 'input' group.  Hotkey detection will likely fail.  "
+                            "Run: sudo usermod -aG input $USER  (then log out and back in)."
+                        )
+                except KeyError:
+                    log.warning(
+                        "LinuxBackend: 'input' group not found on this system."
+                    )
+                log.info(
+                    "LinuxBackend: Wayland session detected, using uinput backend "
+                    "for keyboard hooking.  Active-window title is not available."
+                )
+            else:
+                log.warning(
+                    "LinuxBackend: Wayland session detected but using '%s' backend.  "
+                    "Global keyboard hooks will NOT work.  Set PYNPUT_BACKEND=uinput "
+                    "and ensure the 'evdev' package is available.",
+                    pynput_backend,
+                )
 
         # Probe for optional CLI helpers at startup so we log only once.
         self._xdotool: Optional[str] = shutil.which("xdotool")
@@ -360,7 +382,7 @@ class LinuxBackend(PlatformBackend):
         """
         normalised = hotkey.lower()
         if normalised == "right alt":
-            return {"right alt", "alt_r", "alt gr", "altgr"}
+            return {"right alt", "alt_r", "alt gr", "altgr", "iso_level3_shift"}
         return {normalised}
 
     def get_hotkey_scan_codes(self, hotkey: str) -> set[int]:

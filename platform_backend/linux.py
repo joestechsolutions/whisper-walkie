@@ -95,7 +95,10 @@ class LinuxBackend(PlatformBackend):
         self._is_wayland: bool = session_type == "wayland"
 
         if self._is_wayland:
-            pynput_backend = os.environ.get("PYNPUT_BACKEND", "xorg")
+            pynput_backend = os.environ.get(
+                "PYNPUT_BACKEND_KEYBOARD",
+                os.environ.get("PYNPUT_BACKEND", "xorg"),
+            )
             if pynput_backend == "uinput":
                 # Verify the user has /dev/input/ access
                 import grp
@@ -151,10 +154,10 @@ class LinuxBackend(PlatformBackend):
     def type_text(self, text: str) -> int:
         """Inject *text* into the focused window.
 
-        Attempts (in order):
-        1. ``pynput.keyboard.Controller().type()``
-        2. ``xdotool type --clearmodifiers -- <text>``
-        3. ``wtype -- <text>``  (Wayland only)
+        On Wayland the order is wtype → xdotool → pynput because xdotool
+        silently fails on native Wayland windows (returns exit 0 but only
+        reaches XWayland clients) and pynput needs /dev/uinput write access.
+        On X11 the order is pynput → xdotool.
 
         Returns the number of characters successfully injected (``len(text)``
         on success, ``0`` on complete failure).
@@ -162,16 +165,36 @@ class LinuxBackend(PlatformBackend):
         if not text:
             return 0
 
-        # --- Primary: pynput ---
-        try:
-            controller = pynput_keyboard.Controller()
-            controller.type(text)
-            log.debug("LinuxBackend.type_text: injected %d chars via pynput", len(text))
-            return len(text)
-        except Exception as exc:
-            log.warning("LinuxBackend.type_text: pynput failed (%s), trying fallback", exc)
+        if self._is_wayland:
+            return self._type_text_wayland(text)
+        return self._type_text_x11(text)
 
-        # --- Fallback 1: xdotool ---
+    def _type_text_wayland(self, text: str) -> int:
+        """Wayland injection: wtype → xdotool → pynput."""
+
+        # --- Primary on Wayland: wtype ---
+        if self._wtype is not None:
+            try:
+                result = subprocess.run(
+                    [self._wtype, "--", text],
+                    timeout=2,
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode == 0:
+                    log.debug(
+                        "LinuxBackend.type_text: injected %d chars via wtype", len(text)
+                    )
+                    return len(text)
+                log.warning(
+                    "LinuxBackend.type_text: wtype exited %d: %s",
+                    result.returncode,
+                    result.stderr.strip(),
+                )
+            except Exception as exc:
+                log.warning("LinuxBackend.type_text: wtype failed (%s)", exc)
+
+        # --- Fallback 1: xdotool (works for XWayland windows) ---
         if self._xdotool is not None:
             try:
                 result = subprocess.run(
@@ -193,27 +216,51 @@ class LinuxBackend(PlatformBackend):
             except Exception as exc:
                 log.warning("LinuxBackend.type_text: xdotool failed (%s)", exc)
 
-        # --- Fallback 2: wtype (Wayland) ---
-        if self._is_wayland and self._wtype is not None:
+        # --- Fallback 2: pynput (needs /dev/uinput write access) ---
+        try:
+            controller = pynput_keyboard.Controller()
+            controller.type(text)
+            log.debug("LinuxBackend.type_text: injected %d chars via pynput", len(text))
+            return len(text)
+        except Exception as exc:
+            log.warning("LinuxBackend.type_text: pynput failed (%s)", exc)
+
+        log.error("LinuxBackend.type_text: all injection methods failed for text of length %d", len(text))
+        return 0
+
+    def _type_text_x11(self, text: str) -> int:
+        """X11 injection: pynput → xdotool."""
+
+        # --- Primary on X11: pynput ---
+        try:
+            controller = pynput_keyboard.Controller()
+            controller.type(text)
+            log.debug("LinuxBackend.type_text: injected %d chars via pynput", len(text))
+            return len(text)
+        except Exception as exc:
+            log.warning("LinuxBackend.type_text: pynput failed (%s), trying fallback", exc)
+
+        # --- Fallback: xdotool ---
+        if self._xdotool is not None:
             try:
                 result = subprocess.run(
-                    [self._wtype, "--", text],
+                    [self._xdotool, "type", "--clearmodifiers", "--", text],
                     timeout=2,
                     capture_output=True,
                     text=True,
                 )
                 if result.returncode == 0:
                     log.debug(
-                        "LinuxBackend.type_text: injected %d chars via wtype", len(text)
+                        "LinuxBackend.type_text: injected %d chars via xdotool", len(text)
                     )
                     return len(text)
                 log.warning(
-                    "LinuxBackend.type_text: wtype exited %d: %s",
+                    "LinuxBackend.type_text: xdotool exited %d: %s",
                     result.returncode,
                     result.stderr.strip(),
                 )
             except Exception as exc:
-                log.warning("LinuxBackend.type_text: wtype failed (%s)", exc)
+                log.warning("LinuxBackend.type_text: xdotool failed (%s)", exc)
 
         log.error("LinuxBackend.type_text: all injection methods failed for text of length %d", len(text))
         return 0

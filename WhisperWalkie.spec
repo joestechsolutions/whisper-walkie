@@ -46,7 +46,7 @@ if os.path.isfile(icon_png):
     datas += [(icon_png, '.')]
 
 # Bundle platform install scripts for easy onboarding.
-for script in ['install-linux.sh', 'install-macos.sh']:
+for script in ['install-linux.sh', 'install-macos.sh', 'setup-wayland.sh']:
     script_path = os.path.join(os.getcwd(), script)
     if os.path.isfile(script_path):
         datas += [(script_path, '.')]

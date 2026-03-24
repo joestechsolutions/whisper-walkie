@@ -1,4 +1,5 @@
 import os
+import shutil
 import sys
 import builtins
 import queue
@@ -1329,6 +1330,124 @@ class StatusCard:
 
 
 # ---------------------------------------------------------------------------
+# Wayland setup check — shows an in-app dialog if dependencies are missing
+# ---------------------------------------------------------------------------
+
+def _check_wayland_setup() -> list[str]:
+    """Return a list of setup issues for Wayland sessions, or [] if OK."""
+    if platform.system() != "Linux":
+        return []
+    if os.environ.get("XDG_SESSION_TYPE", "").lower() != "wayland":
+        return []
+
+    issues = []
+
+    # Check input group membership
+    try:
+        import grp
+        input_gid = grp.getgrnam("input").gr_gid
+        if input_gid not in os.getgroups():
+            issues.append("input_group")
+    except KeyError:
+        pass
+
+    # Check wtype
+    if not shutil.which("wtype"):
+        issues.append("wtype")
+
+    return issues
+
+
+def _build_wayland_dialog(page: ft.Page, issues: list[str]) -> ft.AlertDialog:
+    """Build an AlertDialog explaining required Wayland setup steps."""
+
+    steps = []
+    if "input_group" in issues:
+        steps.append(
+            ft.Container(
+                bgcolor=DS.BG_ELEVATED,
+                border_radius=DS.RAD_SM,
+                padding=ft.Padding.all(12),
+                content=ft.Column(spacing=4, controls=[
+                    ft.Text("Add yourself to the input group:", size=13, color=DS.TEXT_SECONDARY),
+                    ft.Container(
+                        bgcolor=DS.BG_BASE,
+                        border_radius=4,
+                        padding=ft.Padding.all(8),
+                        content=ft.Text(
+                            "sudo usermod -aG input $USER",
+                            size=12, color=DS.ACCENT, font_family="monospace", selectable=True,
+                        ),
+                    ),
+                    ft.Text("Then log out and log back in.", size=11, color=DS.TEXT_MUTED, italic=True),
+                ]),
+            )
+        )
+
+    if "wtype" in issues:
+        steps.append(
+            ft.Container(
+                bgcolor=DS.BG_ELEVATED,
+                border_radius=DS.RAD_SM,
+                padding=ft.Padding.all(12),
+                content=ft.Column(spacing=4, controls=[
+                    ft.Text("Install wtype for text injection:", size=13, color=DS.TEXT_SECONDARY),
+                    ft.Container(
+                        bgcolor=DS.BG_BASE,
+                        border_radius=4,
+                        padding=ft.Padding.all(8),
+                        content=ft.Text(
+                            "sudo apt install wtype",
+                            size=12, color=DS.ACCENT, font_family="monospace", selectable=True,
+                        ),
+                    ),
+                ]),
+            )
+        )
+
+    tip_text = (
+        "Or run ./install-linux.sh — it handles everything automatically."
+    )
+
+    def _close(e):
+        dialog.open = False
+        page.update()
+
+    dialog = ft.AlertDialog(
+        modal=True,
+        title=ft.Row(
+            controls=[
+                ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color="#f59e0b", size=24),
+                ft.Text("Wayland Setup Needed", size=18, weight=ft.FontWeight.W_600, color=DS.TEXT_PRIMARY),
+            ],
+            spacing=DS.SP_SM,
+        ),
+        content=ft.Container(
+            width=380,
+            content=ft.Column(
+                spacing=DS.SP_MD,
+                tight=True,
+                controls=[
+                    ft.Text(
+                        "Whisper Walkie needs a couple of things to work on Wayland:",
+                        size=13, color=DS.TEXT_SECONDARY,
+                    ),
+                    *steps,
+                    ft.Text(tip_text, size=11, color=DS.TEXT_MUTED, italic=True),
+                ],
+            ),
+        ),
+        actions=[
+            ft.TextButton("Got it", on_click=_close, style=ft.ButtonStyle(color=DS.PRIMARY)),
+        ],
+        actions_alignment=ft.MainAxisAlignment.END,
+        bgcolor=DS.BG_SURFACE,
+        shape=ft.RoundedRectangleBorder(radius=DS.RAD_LG),
+    )
+    return dialog
+
+
+# ---------------------------------------------------------------------------
 # Custom GUI (Flet 0.81.0 Compatible) — Premium Design
 # ---------------------------------------------------------------------------
 
@@ -1380,6 +1499,15 @@ def main_gui(page: ft.Page):
         onboarding_dialog = _build_onboarding_dialog(page)
         page.overlay.append(onboarding_dialog)
         onboarding_dialog.open = True
+
+    # ---- Wayland setup check ----
+    wayland_issues = _check_wayland_setup()
+    if wayland_issues:
+        wayland_dialog = _build_wayland_dialog(page, wayland_issues)
+        page.overlay.append(wayland_dialog)
+        # Show after onboarding (or immediately if not first run)
+        if not _is_first_run():
+            wayland_dialog.open = True
 
     # ---- Footer hotkey chip ref — updates when hotkey changes ----
     footer_chip_ref = ft.Ref()

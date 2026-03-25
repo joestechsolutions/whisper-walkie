@@ -88,9 +88,11 @@ jobs:
         if: runner.os == 'Linux'
         run: xvfb-run pytest tests/ -v --tb=short
 
-      # Scan dependencies for known CVEs (runs once per OS, not critical path)
+      # Scan dependencies for known CVEs (runs once per OS, not critical path).
+      # continue-on-error keeps CI green when unfixed CVEs exist in transitive deps.
       - name: Dependency vulnerability scan
         if: matrix.python-version == '3.12'
+        continue-on-error: true
         run: |
           pip install pip-audit --quiet
-          pip-audit -r requirements.txt || echo "::warning::pip-audit found vulnerabilities — review above output"
+          pip-audit -r requirements.txt

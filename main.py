@@ -228,31 +228,44 @@ backend = get_backend()
 
 # --- Transcription Logic ---
 
-def _detect_device() -> tuple[str, str]:
+def _detect_device() -> tuple[str, str, bool]:
     """Pick the best device/compute_type without a slow failed-load cycle.
 
-    Returns (device, compute_type).  On macOS always CPU.  On Windows/Linux
-    we probe for a working CUDA runtime via ctranslate2 before committing.
+    Returns (device, compute_type, has_cuda).  On macOS always CPU.
+    On Windows/Linux we probe for a working CUDA runtime via ctranslate2.
     """
     if platform.system() == "Darwin":
-        return "cpu", "int8"
+        return "cpu", "int8", False
 
     # Fast probe: ctranslate2 (used by faster-whisper) exposes device list
     try:
         import ctranslate2
         if "cuda" in (d.lower() for d in ctranslate2.get_supported_compute_types("cuda")):
-            return "cuda", "float16"
+            return "cuda", "float16", True
     except Exception:
         pass
 
-    return "cpu", "int8"
+    return "cpu", "int8", False
 
 
 def load_whisper():
-    model_path = _get_model_path()
-    device, compute_type = _detect_device()
+    device, compute_type, has_cuda = _detect_device()
+
+    # On CPU, use 'tiny' for fast transcription; with CUDA, 'base' is fine
+    if has_cuda:
+        model_path = _get_model_path()  # bundled 'base' or download 'base'
+    else:
+        # Check for bundled base model first — still usable on CPU
+        bundle_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+        bundled = os.path.join(bundle_dir, 'faster-whisper-base')
+        if os.path.isdir(bundled) and os.path.isfile(os.path.join(bundled, 'model.bin')):
+            model_path = bundled  # use bundled base even on CPU
+        else:
+            model_path = "tiny"  # download tiny instead of base for CPU
+
     print(f"Loading '{model_path}' Whisper model on {device.upper()}...")
     state.whisper_model = WhisperModel(model_path, device=device, compute_type=compute_type)
+    state._has_cuda = has_cuda
     print(f"Model loaded successfully on {device.upper()}.")
 
 def audio_callback(indata, frames, time, status):
@@ -300,7 +313,11 @@ def stop_recording(e=None):
 
 def process_audio(audio_data):
     try:
-        segments, info = state.whisper_model.transcribe(audio_data, beam_size=5)
+        # beam_size=1 on CPU for speed; beam_size=5 with CUDA for quality
+        beam = 5 if getattr(state, '_has_cuda', False) else 1
+        segments, info = state.whisper_model.transcribe(
+            audio_data, beam_size=beam, language="en",
+        )
         transcript = "".join([s.text for s in segments]).strip()
 
         if transcript:
@@ -2063,11 +2080,17 @@ def main_gui(page: ft.Page):
     # ----------------------------------------------------------------
 
     def run_transcription():
-        if state.gui_update_callback:
-            state.gui_update_callback("loading")
+        try:
+            if state.gui_update_callback:
+                state.gui_update_callback("loading")
+        except Exception:
+            pass  # Flet thread-safety race — non-fatal
         load_whisper()
-        if state.gui_update_callback:
-            state.gui_update_callback("ready")
+        try:
+            if state.gui_update_callback:
+                state.gui_update_callback("ready")
+        except Exception:
+            pass
 
         # Build the set of expected key names and scan codes for the hotkey
         _expected_names = backend.get_hotkey_names(state.hotkey)

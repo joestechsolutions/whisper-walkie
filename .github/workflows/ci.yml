@@ -89,10 +89,11 @@ jobs:
         run: xvfb-run pytest tests/ -v --tb=short
 
       # Scan dependencies for known CVEs (runs once per OS, not critical path).
-      # continue-on-error keeps CI green when unfixed CVEs exist in transitive deps.
+      # --ignore-vuln skips CVEs with no upstream fix in transitive deps.
+      # Remove the ignore flag once pygments ships a patched release.
       - name: Dependency vulnerability scan
         if: matrix.python-version == '3.12'
-        continue-on-error: true
+        shell: bash
         run: |
           pip install pip-audit --quiet
-          pip-audit -r requirements.txt
+          pip-audit -r requirements.txt --ignore-vuln CVE-2026-4539

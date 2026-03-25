@@ -137,12 +137,20 @@ class LinuxBackend(PlatformBackend):
             )
 
         self._wtype: Optional[str] = shutil.which("wtype") if self._is_wayland else None
-        if self._is_wayland and self._wtype is None:
-            log.warning(
-                "LinuxBackend: wtype not found.  "
-                "On Wayland, text injection may fail if pynput is also "
-                "unavailable.  Install wtype as a fallback."
-            )
+
+        # wl-copy for clipboard-based injection on Wayland (GNOME/Mutter)
+        self._wl_copy: Optional[str] = shutil.which("wl-copy") if self._is_wayland else None
+        self._wl_paste: Optional[str] = shutil.which("wl-paste") if self._is_wayland else None
+
+        # ydotool for Wayland text injection (works on GNOME/Mutter + wlroots)
+        self._wayland_input = None
+        if self._is_wayland:
+            try:
+                from .wayland_input import WaylandInput
+                self._wayland_input = WaylandInput()
+                self._wayland_input.setup()
+            except Exception as exc:
+                log.warning("LinuxBackend: Wayland input unavailable: %s", exc)
 
         # The currently active pynput Listener (or None).
         self._listener: Optional[Listener] = None
@@ -170,31 +178,26 @@ class LinuxBackend(PlatformBackend):
         return self._type_text_x11(text)
 
     def _type_text_wayland(self, text: str) -> int:
-        """Wayland injection: wtype → xdotool → pynput."""
+        """Wayland injection: ydotool → wtype → xdotool.
 
-        # --- Primary on Wayland: wtype ---
-        if self._wtype is not None:
+        ydotool's character-by-character typing via /dev/uinput works on
+        GNOME/Mutter even though other injection methods (wtype, xdotool,
+        pynput, AT-SPI) do not.  wtype is kept as a fallback for wlroots
+        compositors, and xdotool for any XWayland windows.
+        """
+
+        # --- Primary: ydotool character-by-character (GNOME + wlroots) ---
+        if self._wayland_input is not None and self._wayland_input.available:
             try:
-                result = subprocess.run(
-                    [self._wtype, "--", text],
-                    timeout=2,
-                    capture_output=True,
-                    text=True,
-                )
-                if result.returncode == 0:
+                if self._wayland_input.type_text(text):
                     log.debug(
-                        "LinuxBackend.type_text: injected %d chars via wtype", len(text)
+                        "LinuxBackend.type_text: injected %d chars via ydotool", len(text)
                     )
                     return len(text)
-                log.warning(
-                    "LinuxBackend.type_text: wtype exited %d: %s",
-                    result.returncode,
-                    result.stderr.strip(),
-                )
             except Exception as exc:
-                log.warning("LinuxBackend.type_text: wtype failed (%s)", exc)
+                log.warning("LinuxBackend.type_text: ydotool failed (%s)", exc)
 
-        # --- Fallback 1: xdotool (works for XWayland windows) ---
+        # --- Fallback: xdotool type (XWayland windows only) ---
         if self._xdotool is not None:
             try:
                 result = subprocess.run(
@@ -208,22 +211,8 @@ class LinuxBackend(PlatformBackend):
                         "LinuxBackend.type_text: injected %d chars via xdotool", len(text)
                     )
                     return len(text)
-                log.warning(
-                    "LinuxBackend.type_text: xdotool exited %d: %s",
-                    result.returncode,
-                    result.stderr.strip(),
-                )
             except Exception as exc:
                 log.warning("LinuxBackend.type_text: xdotool failed (%s)", exc)
-
-        # --- Fallback 2: pynput (needs /dev/uinput write access) ---
-        try:
-            controller = pynput_keyboard.Controller()
-            controller.type(text)
-            log.debug("LinuxBackend.type_text: injected %d chars via pynput", len(text))
-            return len(text)
-        except Exception as exc:
-            log.warning("LinuxBackend.type_text: pynput failed (%s)", exc)
 
         log.error("LinuxBackend.type_text: all injection methods failed for text of length %d", len(text))
         return 0

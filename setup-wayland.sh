@@ -11,16 +11,24 @@ set -e
 USERNAME="${1:?Usage: setup-wayland.sh <username>}"
 CACHE_DIR="/home/$USERNAME/.whisper-walkie"
 
-# ── Install wtype (text injection on Wayland) ─────────────────────
-if ! command -v wtype &>/dev/null; then
-    if command -v apt-get &>/dev/null; then
-        apt-get install -y -qq wtype 2>/dev/null
-    elif command -v dnf &>/dev/null; then
-        dnf install -y -q wtype 2>/dev/null
-    elif command -v pacman &>/dev/null; then
-        pacman -S --noconfirm --quiet wtype 2>/dev/null
+# ── Install ydotool + wtype + xdotool (text injection on Wayland) ─
+# ydotool is the primary method — its character-by-character typing via
+# /dev/uinput works on GNOME/Mutter and wlroots compositors.
+# wtype is a fallback for wlroots (Sway, Hyprland).
+# xdotool is a fallback for XWayland windows.
+for pkg in ydotool wl-clipboard wtype xdotool; do
+    cmd="${pkg%%-*}"  # wl-clipboard -> wl, wtype -> wtype, xdotool -> xdotool
+    [ "$pkg" = "wl-clipboard" ] && cmd="wl-copy"
+    if ! command -v "$cmd" &>/dev/null; then
+        if command -v apt-get &>/dev/null; then
+            apt-get install -y -qq "$pkg" 2>/dev/null
+        elif command -v dnf &>/dev/null; then
+            dnf install -y -q "$pkg" 2>/dev/null
+        elif command -v pacman &>/dev/null; then
+            pacman -S --noconfirm --quiet "$pkg" 2>/dev/null
+        fi
     fi
-fi
+done
 
 # ── Add user to input group (hotkey detection on Wayland) ─────────
 if ! getent group input &>/dev/null; then
@@ -30,6 +38,20 @@ else
         usermod -aG input "$USERNAME"
         echo "ADDED_INPUT_GROUP"
     fi
+fi
+
+# ── Allow input group to write /dev/uinput (text injection) ───────
+# By default /dev/uinput is root-only.  pynput's uinput Controller
+# needs write access to create a virtual keyboard for text injection.
+# This is the only method that works reliably on GNOME Wayland (wtype
+# requires zwp_virtual_keyboard_v1 which Mutter does not implement,
+# and xdotool only reaches XWayland clients).
+UINPUT_RULE="/etc/udev/rules.d/99-whisper-walkie-uinput.rules"
+if [ ! -f "$UINPUT_RULE" ]; then
+    echo 'KERNEL=="uinput", GROUP="input", MODE="0660"' > "$UINPUT_RULE"
+    udevadm control --reload-rules 2>/dev/null || true
+    udevadm trigger /dev/uinput 2>/dev/null || true
+    echo "ADDED_UINPUT_RULE"
 fi
 
 # ── Cache dumpkeys output (pynput uinput backend needs this) ──────

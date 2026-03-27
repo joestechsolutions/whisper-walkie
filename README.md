@@ -23,7 +23,7 @@ Choose your platform and download — no Python or technical setup required:
 |----------|----------|------|-------|
 | **Windows** | [**.exe installer**](https://github.com/joestechsolutions/whisper-walkie/releases/latest) | ~200 MB | Double-click to install. AI model included. |
 | **macOS** | [**.zip**](https://github.com/joestechsolutions/whisper-walkie/releases/latest) | ~200 MB | Drag to Applications. Grant Accessibility permission on first run. |
-| **Linux** | [**.tar.gz**](https://github.com/joestechsolutions/whisper-walkie/releases/latest) | ~200 MB | Extract and run. Works best on X11. |
+| **Linux** | [**.tar.gz**](https://github.com/joestechsolutions/whisper-walkie/releases/latest) | ~200 MB | Extract and run. Works on X11 and Wayland. |
 
 > **Everything is bundled** — the AI speech model is included in the download. No internet needed after you download.
 
@@ -43,9 +43,9 @@ cd WhisperWalkie
 ```
 This installs to `/Applications`, clears the Gatekeeper warning, and creates a Launchpad/Spotlight entry. Then grant Accessibility permissions in **System Settings → Privacy & Security → Accessibility.**
 
-**Linux:** Install system dependencies, then extract and launch:
+**Linux (X11):** Install system dependencies, then extract and launch:
 ```bash
-# Install required audio library + optional text injection tool
+# Install required audio library + text injection tool
 sudo apt install libportaudio2 xdotool   # Debian/Ubuntu
 
 # Extract and run
@@ -53,6 +53,19 @@ tar xzf WhisperWalkie-linux.tar.gz
 cd WhisperWalkie
 ./WhisperWalkie
 ```
+
+**Linux (Wayland):** Whisper Walkie fully supports Wayland. On first launch, an in-app setup dialog guides you through installing any missing dependencies (`ydotool`, `wtype`). Or install them ahead of time:
+```bash
+# Install Wayland dependencies
+sudo apt install libportaudio2 ydotool wtype   # Debian/Ubuntu
+
+# Extract and run
+tar xzf WhisperWalkie-linux.tar.gz
+cd WhisperWalkie
+./WhisperWalkie
+```
+
+> **Wayland auto-setup:** If `ydotool` or `wtype` aren't installed, the app detects this and walks you through setup with a one-click dialog — no terminal commands needed.
 
 **Create a desktop shortcut** (so it appears in your app launcher):
 ```bash
@@ -96,13 +109,14 @@ https://github.com/user-attachments/assets/682d5a2b-b35b-41cd-ac61-77a16de6ad6c
 
 - **100% Local & Private** — AI model runs on your machine. Audio never touches a network.
 - **Works Everywhere** — Types into any window: browsers, chat apps, IDEs, games.
-- **GPU Accelerated** — Uses NVIDIA CUDA if available (Windows/Linux), falls back to CPU.
-- **Cross-Platform** — Windows, macOS, and Linux.
+- **GPU Accelerated** — Uses NVIDIA CUDA if available (Windows/Linux), falls back to CPU automatically.
+- **Cross-Platform** — Windows, macOS, and Linux (X11 + Wayland).
 - **Push-to-Talk** — Hold to record, release to transcribe. Simple as a walkie-talkie.
 - **Configurable Hotkey** — Right Alt, Scroll Lock, Pause, F13, F14, Insert, or Right Ctrl.
 - **Transcription History** — Last 10 transcriptions with timestamps and copy buttons.
 - **Works Offline** — AI model is bundled. No internet needed after download.
 - **99 Languages** — Whisper auto-detects the spoken language. Accuracy varies by language — English is strongest.
+- **Wayland Native** — Full support with auto-setup dialog, ydotool/wtype text injection, and uinput hotkey backend.
 
 ---
 
@@ -129,7 +143,7 @@ Yes. SmartScreen warns about apps from new publishers. Since Whisper Walkie is o
 <details>
 <summary><b>Do I need a powerful computer?</b></summary>
 <br>
-No. The Whisper "base" model runs on any modern CPU. If you have an NVIDIA GPU, transcription will be faster with CUDA acceleration.
+No. The Whisper "base" model runs on any modern CPU. If you have an NVIDIA GPU, transcription will be faster with CUDA acceleration. The app auto-detects your hardware and picks the best path.
 </details>
 
 <details>
@@ -150,6 +164,12 @@ Yes. Open Settings in the app and choose from: Right Alt, Scroll Lock, Pause, F1
 Go to System Settings → Privacy & Security → Accessibility. Click the + button and add the Whisper Walkie app.
 </details>
 
+<details>
+<summary><b>Does it work on Wayland?</b></summary>
+<br>
+Yes — fully. Whisper Walkie auto-detects Wayland sessions and uses the <code>uinput</code> backend for hotkeys and <code>ydotool</code>/<code>wtype</code> for text injection. On first launch, an in-app dialog guides you through installing any missing dependencies.
+</details>
+
 ---
 
 ## Settings
@@ -160,7 +180,6 @@ All settings are available in the app — no config files to edit:
 |---------|---------|---------|
 | **Push-to-Talk Key** | Right Alt, Scroll Lock, Pause, F13, F14, Insert, Right Ctrl | Right Alt |
 | **Microphone** | Any detected input device | Auto-detected |
-| **AI Model** | Any local Ollama model (optional) | First available |
 
 ---
 
@@ -196,7 +215,7 @@ python main.py
 
 **Linux (X11):** Works out of the box. Install `xdotool` for window title detection.
 
-**Linux (Wayland):** Limited support. Install `wtype` for text injection.
+**Linux (Wayland):** Fully supported. The app auto-detects Wayland and configures the uinput backend. Install `ydotool` and `wtype` for text injection, or let the in-app setup dialog handle it.
 
 </details>
 
@@ -224,8 +243,8 @@ pyinstaller WhisperWalkie.spec
 | GUI | [Flet](https://flet.dev) (Flutter for Python) |
 | Speech-to-Text | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (CTranslate2) |
 | Audio Capture | [sounddevice](https://python-sounddevice.readthedocs.io/) |
-| Keyboard Hooks | [pynput](https://pynput.readthedocs.io/) |
-| Text Injection | Win32 SendInput (Windows), CGEvents (macOS), Xlib/xdotool (Linux) |
+| Keyboard Hooks | [pynput](https://pynput.readthedocs.io/) (uinput backend on Wayland) |
+| Text Injection | Win32 SendInput (Windows), CGEvents (macOS), xdotool (X11), ydotool/wtype (Wayland) |
 | CI/CD | GitHub Actions (3 OS × 2 Python versions) |
 
 </details>
@@ -235,10 +254,11 @@ pyinstaller WhisperWalkie.spec
 
 | Feature | Windows | macOS | Linux (X11) | Linux (Wayland) |
 |---------|---------|-------|-------------|-----------------|
-| Push-to-talk | Full | Full | Full | Limited |
-| Text injection | SendInput | CGEvents | pynput/xdotool | wtype |
+| Push-to-talk | Full | Full | Full | Full (uinput) |
+| Text injection | SendInput | CGEvents | pynput/xdotool | ydotool/wtype |
 | CUDA acceleration | Yes | No | Yes | Yes |
 | Window title | Yes | Yes | Yes (xdotool) | No |
+| Auto-setup dialog | N/A | N/A | N/A | Yes |
 
 </details>
 
@@ -253,7 +273,11 @@ whisper-walkie/
 │   ├── base.py                # PlatformBackend ABC
 │   ├── windows.py             # Win32 SendInput + pynput hooks
 │   ├── macos.py               # pynput + CGEvents + osascript
-│   └── linux.py               # pynput + xdotool/wtype
+│   ├── linux.py               # pynput + xdotool/wtype/ydotool
+│   └── wayland_input.py       # ydotool-based text injection
+├── setup-wayland.sh           # Wayland dependency installer
+├── install-linux.sh           # Linux desktop shortcut creator
+├── install-macos.sh           # macOS installer script
 ├── .github/workflows/         # CI + auto-build on version tags
 ├── requirements.txt           # Pinned Python dependencies
 ├── WhisperWalkie.spec         # PyInstaller build config

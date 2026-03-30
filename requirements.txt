@@ -1,10 +1,10 @@
 sounddevice==0.5.5
-numpy==2.4.3
+numpy==2.4.4
 faster-whisper==1.2.1
 pyperclip==1.11.0
 scipy==1.17.1
-flet[desktop]==0.82.2
-requests==2.33.0
+flet[desktop]==0.83.1
+requests==2.33.1
 pynput==1.8.1
 python-xlib==0.33; sys_platform == 'linux'
 evdev>=1.7.0; sys_platform == 'linux'

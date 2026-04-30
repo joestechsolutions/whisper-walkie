@@ -115,7 +115,7 @@ jobs:
       # -----------------------------------------------------------------------
       - name: Upload artifact (zip)
         if: runner.os == 'Windows' || runner.os == 'macOS'
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: ${{ matrix.artifact }}-${{ github.ref_name }}
           path: dist/${{ matrix.artifact }}.zip
@@ -123,7 +123,7 @@ jobs:
 
       - name: Upload artifact (installer)
         if: runner.os == 'Windows'
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: ${{ matrix.artifact }}-installer-${{ github.ref_name }}
           path: dist/WhisperWalkie-Setup.exe
@@ -131,7 +131,7 @@ jobs:
 
       - name: Upload artifact (tar.gz)
         if: runner.os == 'Linux'
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: ${{ matrix.artifact }}-${{ github.ref_name }}
           path: dist/${{ matrix.artifact }}.tar.gz
@@ -143,18 +143,18 @@ jobs:
       # -----------------------------------------------------------------------
       - name: Upload to release (zip)
         if: runner.os == 'Windows' || runner.os == 'macOS'
-        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe  # v2.6.1
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda  # v3.0.0
         with:
           files: dist/${{ matrix.artifact }}.zip
 
       - name: Upload to release (installer)
         if: runner.os == 'Windows'
-        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe  # v2.6.1
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda  # v3.0.0
         with:
           files: dist/WhisperWalkie-Setup.exe
 
       - name: Upload to release (tar.gz)
         if: runner.os == 'Linux'
-        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe  # v2.6.1
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda  # v3.0.0
         with:
           files: dist/${{ matrix.artifact }}.tar.gz

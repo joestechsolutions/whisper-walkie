@@ -22,6 +22,9 @@ datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('Xlib')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
+# repath is a transitive flet dependency that PyInstaller misses
+hiddenimports += ['repath']
+
 # evdev is required for pynput's uinput backend (Wayland support)
 if sys.platform.startswith('linux'):
     try:

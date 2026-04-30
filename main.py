@@ -9,6 +9,7 @@ import platform
 # it via pkexec + sg re-exec before the rest of the app loads.
 # ---------------------------------------------------------------------------
 
+
 def _early_wayland_setup() -> None:
     """Auto-fix Wayland deps before any pynput import can occur.
 
@@ -29,7 +30,9 @@ def _early_wayland_setup() -> None:
     import subprocess
 
     # Config helpers (self-contained — no dependency on later code)
-    config_path = os.path.join(os.path.expanduser("~"), ".whisper-walkie", "config.json")
+    config_path = os.path.join(
+        os.path.expanduser("~"), ".whisper-walkie", "config.json"
+    )
 
     def _load_cfg() -> dict:
         try:
@@ -52,7 +55,8 @@ def _early_wayland_setup() -> None:
         if not sg:
             return
         import shlex
-        if getattr(sys, 'frozen', False):
+
+        if getattr(sys, "frozen", False):
             # PyInstaller binary — sys.executable IS the app
             reexec_args = [sys.executable] + sys.argv[1:]
         else:
@@ -71,7 +75,9 @@ def _early_wayland_setup() -> None:
 
     # --- Check what's needed ---
     needs_wtype = shutil.which("wtype") is None
-    dumpkeys_cache = os.path.join(os.path.expanduser("~"), ".whisper-walkie", "dumpkeys.cache")
+    dumpkeys_cache = os.path.join(
+        os.path.expanduser("~"), ".whisper-walkie", "dumpkeys.cache"
+    )
     needs_dumpkeys_cache = not os.path.isfile(dumpkeys_cache)
 
     # Check input group: is the user in the group on disk?  In the process?
@@ -81,6 +87,7 @@ def _early_wayland_setup() -> None:
     try:
         import grp
         import pwd
+
         input_gid = grp.getgrnam("input").gr_gid
         process_has_input_group = input_gid in os.getgroups()
         username = pwd.getpwuid(os.getuid()).pw_name
@@ -100,7 +107,12 @@ def _early_wayland_setup() -> None:
     # This happens after usermod but before logout/login.
     # Just sg re-exec — no pkexec, no password prompt.
     # Also need dumpkeys cache to exist.
-    if not needs_wtype and not needs_dumpkeys_cache and user_in_input_group_on_disk and not process_has_input_group:
+    if (
+        not needs_wtype
+        and not needs_dumpkeys_cache
+        and user_in_input_group_on_disk
+        and not process_has_input_group
+    ):
         cfg = _load_cfg()
         cfg["wayland_setup_complete"] = True
         _save_cfg(cfg)
@@ -108,10 +120,12 @@ def _early_wayland_setup() -> None:
         return  # sg failed — app continues, hotkey may not work
 
     # --- Scenario 3: Need to install something via pkexec ---
-    bundle_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
-    setup_script = os.path.join(bundle_dir, 'setup-wayland.sh')
+    bundle_dir = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    setup_script = os.path.join(bundle_dir, "setup-wayland.sh")
     if not os.path.isfile(setup_script):
-        setup_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'setup-wayland.sh')
+        setup_script = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "setup-wayland.sh"
+        )
     if not os.path.isfile(setup_script):
         return
 
@@ -154,7 +168,7 @@ import threading
 # Fix for PyInstaller frozen builds: Flet's error handler uses `exit()` which
 # isn't available in frozen apps (it's a `site` module convenience function).
 # Patching it here prevents a NameError crash if flet_desktop is missing.
-if not hasattr(builtins, 'exit'):
+if not hasattr(builtins, "exit"):
     builtins.exit = sys.exit
 
 import numpy as np
@@ -173,36 +187,42 @@ import unicodedata
 from platform_backend import get_backend
 
 # Set up file logging so we can debug even when running via pythonw.exe
-LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "walkie.log")
+LOG_DIR = os.path.join(os.getenv("APPDATA", os.path.expanduser("~")), "WhisperWalkie")
+os.makedirs(LOG_DIR, exist_ok=True)
+LOG_FILE = os.path.join(LOG_DIR, "walkie.log")
 logging.basicConfig(
     level=logging.WARNING,  # Suppress noisy Flet/httpx debug logs
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
-        logging.FileHandler(LOG_FILE, mode='w', encoding='utf-8'),
-        logging.StreamHandler(sys.stdout) if sys.stdout else logging.FileHandler(LOG_FILE),
-    ]
+        logging.FileHandler(LOG_FILE, mode="w", encoding="utf-8"),
+        logging.StreamHandler(sys.stdout)
+        if sys.stdout
+        else logging.FileHandler(LOG_FILE),
+    ],
 )
 log = logging.getLogger("walkie")
 log.setLevel(logging.DEBUG)  # Our own logger stays at DEBUG
 
 # --- Configuration ---
 APP_VERSION = "1.2.4"
-DEFAULT_HOTKEY = 'right alt'
-MODEL_SIZE = 'base'
+DEFAULT_HOTKEY = "right alt"
+MODEL_SIZE = "base"
 SAMPLE_RATE = 16000
 OLLAMA_URL = "http://localhost:11434/api"
+
 
 def _get_model_path():
     """Return path to bundled Whisper model if available, else model name for download."""
     # Check for model bundled by PyInstaller (--onedir or --onefile)
-    bundle_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
-    bundled = os.path.join(bundle_dir, 'faster-whisper-base')
-    if os.path.isdir(bundled) and os.path.isfile(os.path.join(bundled, 'model.bin')):
+    bundle_dir = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    bundled = os.path.join(bundle_dir, "faster-whisper-base")
+    if os.path.isdir(bundled) and os.path.isfile(os.path.join(bundled, "model.bin")):
         log.info("Using bundled Whisper model at %s", bundled)
         return bundled
     # Fall back to downloading on first use
     log.info("No bundled model found — will download '%s' on first use", MODEL_SIZE)
     return MODEL_SIZE
+
 
 # --- State Management ---
 class AppState:
@@ -217,9 +237,10 @@ class AppState:
         self.status_text = "Ready"
         self.whisper_model = None
         self.gui_update_callback = None
-        self.paste_target = None   # Snapshot of target at recording start
-        self.key_handler = None    # Reference to the keyboard hook callback
-        self.hook_ref = None       # Reference to the installed hook (for unhooking)
+        self.paste_target = None  # Snapshot of target at recording start
+        self.key_handler = None  # Reference to the keyboard hook callback
+        self.hook_ref = None  # Reference to the installed hook (for unhooking)
+
 
 state = AppState()
 
@@ -227,6 +248,7 @@ state = AppState()
 backend = get_backend()
 
 # --- Transcription Logic ---
+
 
 def _detect_device() -> tuple[str, str, bool]:
     """Pick the best device/compute_type without a slow failed-load cycle.
@@ -240,7 +262,10 @@ def _detect_device() -> tuple[str, str, bool]:
     # Fast probe: ctranslate2 (used by faster-whisper) exposes device list
     try:
         import ctranslate2
-        if "cuda" in (d.lower() for d in ctranslate2.get_supported_compute_types("cuda")):
+
+        if "cuda" in (
+            d.lower() for d in ctranslate2.get_supported_compute_types("cuda")
+        ):
             return "cuda", "float16", True
     except Exception:
         pass
@@ -256,23 +281,31 @@ def load_whisper():
         model_path = _get_model_path()  # bundled 'base' or download 'base'
     else:
         # Check for bundled base model first — still usable on CPU
-        bundle_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
-        bundled = os.path.join(bundle_dir, 'faster-whisper-base')
-        if os.path.isdir(bundled) and os.path.isfile(os.path.join(bundled, 'model.bin')):
+        bundle_dir = getattr(
+            sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__))
+        )
+        bundled = os.path.join(bundle_dir, "faster-whisper-base")
+        if os.path.isdir(bundled) and os.path.isfile(
+            os.path.join(bundled, "model.bin")
+        ):
             model_path = bundled  # use bundled base even on CPU
         else:
             model_path = "tiny"  # download tiny instead of base for CPU
 
     print(f"Loading '{model_path}' Whisper model on {device.upper()}...")
-    state.whisper_model = WhisperModel(model_path, device=device, compute_type=compute_type)
+    state.whisper_model = WhisperModel(
+        model_path, device=device, compute_type=compute_type
+    )
     state._has_cuda = has_cuda
     print(f"Model loaded successfully on {device.upper()}.")
+
 
 def audio_callback(indata, frames, time, status):
     if status:
         print(status, file=sys.stderr)
     if state.is_recording:
         state.audio_queue.put(indata.copy())
+
 
 def start_recording(e=None):
     if not state.is_recording:
@@ -284,6 +317,7 @@ def start_recording(e=None):
         # Drive the status card to "recording" state
         if state.gui_update_callback:
             state.gui_update_callback("recording")
+
 
 def stop_recording(e=None):
     if state.is_recording:
@@ -298,32 +332,40 @@ def stop_recording(e=None):
 
         if not chunks:
             state.status_text = "No audio captured"
-            if state.gui_update_callback: state.gui_update_callback("ready")
+            if state.gui_update_callback:
+                state.gui_update_callback("ready")
             return
 
         audio_data = np.concatenate(chunks, axis=0).flatten()
 
         if state.device_sample_rate != SAMPLE_RATE:
-            num_samples = int(len(audio_data) * float(SAMPLE_RATE) / state.device_sample_rate)
+            num_samples = int(
+                len(audio_data) * float(SAMPLE_RATE) / state.device_sample_rate
+            )
             audio_data = scipy.signal.resample(audio_data, num_samples)
 
         # Signal processing state before launching the thread
-        if state.gui_update_callback: state.gui_update_callback("processing")
+        if state.gui_update_callback:
+            state.gui_update_callback("processing")
         threading.Thread(target=process_audio, args=(audio_data,)).start()
+
 
 def process_audio(audio_data):
     try:
         # beam_size=1 on CPU for speed; beam_size=5 with CUDA for quality
-        beam = 5 if getattr(state, '_has_cuda', False) else 1
+        beam = 5 if getattr(state, "_has_cuda", False) else 1
         segments, info = state.whisper_model.transcribe(
-            audio_data, beam_size=beam, language="en",
+            audio_data,
+            beam_size=beam,
+            language="en",
         )
         transcript = "".join([s.text for s in segments]).strip()
 
         if transcript:
             log.info(f"Transcribed: {len(transcript)} chars")
             state.transcript_history.insert(0, transcript)
-            if len(state.transcript_history) > 10: state.transcript_history.pop()
+            if len(state.transcript_history) > 10:
+                state.transcript_history.pop()
 
             # Paste into whatever window currently has focus.
             # Since we removed always_on_top, the user's target window stays focused.
@@ -346,9 +388,13 @@ def process_audio(audio_data):
             backend.pre_injection_cleanup()
 
             # Sanitize: strip control characters from transcription output
-            sanitized = ''.join(c for c in transcript if unicodedata.category(c)[0] != 'C' or c in '\n\t')
+            sanitized = "".join(
+                c
+                for c in transcript
+                if unicodedata.category(c)[0] != "C" or c in "\n\t"
+            )
             # Type text directly into the focused window
-            backend.type_text(sanitized + ' ')
+            backend.type_text(sanitized + " ")
             time.sleep(0.1)
 
             # Restore the keyboard hook if it was removed
@@ -362,18 +408,22 @@ def process_audio(audio_data):
 
             state.status_text = f"Typed: {transcript[:20]}..."
             # Update GUI with result AFTER typing is complete
-            if state.gui_update_callback: state.gui_update_callback("result", transcript)
+            if state.gui_update_callback:
+                state.gui_update_callback("result", transcript)
         else:
             state.status_text = "No speech detected"
-            if state.gui_update_callback: state.gui_update_callback("ready")
+            if state.gui_update_callback:
+                state.gui_update_callback("ready")
 
     except Exception as e:
         state.status_text = "Transcription error — see walkie.log"
         log.error(f"process_audio error: {e}", exc_info=True)
-        if state.gui_update_callback: state.gui_update_callback("ready")
+        if state.gui_update_callback:
+            state.gui_update_callback("ready")
 
 
 # --- Ollama API Integration ---
+
 
 def get_ollama_models():
     try:
@@ -390,55 +440,57 @@ def get_ollama_models():
 # Design tokens — single source of truth for every visual decision
 # ---------------------------------------------------------------------------
 
+
 class DS:
     """Design System tokens."""
 
     # Surface hierarchy (darkest -> lightest)
-    BG_BASE        = "#0d0d14"   # true dark base — canvas behind everything
-    BG_SURFACE     = "#13131f"   # main card/panel backgrounds
-    BG_ELEVATED    = "#1a1a2e"   # raised panels, dropdowns
-    BG_OVERLAY     = "#21213a"   # hover states, secondary controls
+    BG_BASE = "#0d0d14"  # true dark base — canvas behind everything
+    BG_SURFACE = "#13131f"  # main card/panel backgrounds
+    BG_ELEVATED = "#1a1a2e"  # raised panels, dropdowns
+    BG_OVERLAY = "#21213a"  # hover states, secondary controls
 
     # Brand palette — Indigo Spectrum
-    PRIMARY        = "#6366f1"   # indigo-500 — primary actions, focus rings
-    PRIMARY_DIM    = "#4338ca"   # indigo-700 — pressed states
-    PRIMARY_GLOW   = "#818cf8"   # indigo-400 — highlights, glow edges
-    ACCENT         = "#22d3ee"   # cyan-400 — accent dots, active states
-    ACCENT_DIM     = "#0891b2"   # cyan-600 — accent pressed
+    PRIMARY = "#6366f1"  # indigo-500 — primary actions, focus rings
+    PRIMARY_DIM = "#4338ca"  # indigo-700 — pressed states
+    PRIMARY_GLOW = "#818cf8"  # indigo-400 — highlights, glow edges
+    ACCENT = "#22d3ee"  # cyan-400 — accent dots, active states
+    ACCENT_DIM = "#0891b2"  # cyan-600 — accent pressed
 
     # State colors
-    STATE_READY      = "#22d3ee"  # cyan — idle, ready
-    STATE_RECORDING  = "#f43f5e"  # rose-500 — hot, active recording
+    STATE_READY = "#22d3ee"  # cyan — idle, ready
+    STATE_RECORDING = "#f43f5e"  # rose-500 — hot, active recording
     STATE_PROCESSING = "#f59e0b"  # amber-400 — thinking/spinning
-    STATE_SUCCESS    = "#10b981"  # emerald-500 — result delivered
+    STATE_SUCCESS = "#10b981"  # emerald-500 — result delivered
 
     # Typography
-    TEXT_PRIMARY   = "#f1f5f9"   # slate-100
-    TEXT_SECONDARY = "#94a3b8"   # slate-400
-    TEXT_MUTED     = "#475569"   # slate-600
-    TEXT_ACCENT    = "#818cf8"   # indigo-400
+    TEXT_PRIMARY = "#f1f5f9"  # slate-100
+    TEXT_SECONDARY = "#94a3b8"  # slate-400
+    TEXT_MUTED = "#475569"  # slate-600
+    TEXT_ACCENT = "#818cf8"  # indigo-400
 
     # Border / divider
-    BORDER         = "#1e1e3a"
-    BORDER_BRIGHT  = "#2d2d54"
+    BORDER = "#1e1e3a"
+    BORDER_BRIGHT = "#2d2d54"
 
     # Radius tokens (applied via border_radius)
-    RADIUS_SM  = 8
-    RADIUS_MD  = 12
-    RADIUS_LG  = 16
-    RADIUS_XL  = 20
+    RADIUS_SM = 8
+    RADIUS_MD = 12
+    RADIUS_LG = 16
+    RADIUS_XL = 20
 
     # Spacing (used as padding/margin values)
-    SP_XS  = 4
-    SP_SM  = 8
-    SP_MD  = 14
-    SP_LG  = 20
-    SP_XL  = 28
+    SP_XS = 4
+    SP_SM = 8
+    SP_MD = 14
+    SP_LG = 20
+    SP_XL = 28
 
 
 # ---------------------------------------------------------------------------
 # Reusable micro-components
 # ---------------------------------------------------------------------------
+
 
 def _divider() -> ft.Container:
     return ft.Container(
@@ -468,7 +520,11 @@ def _styled_dropdown(
     """A branded dropdown with label and consistent styling.
     options: list of (key, text) tuples.
     """
-    value = initial_value if initial_value is not None else (options[0][0] if options else None)
+    value = (
+        initial_value
+        if initial_value is not None
+        else (options[0][0] if options else None)
+    )
     dd = ft.Dropdown(
         ref=ref,
         options=[ft.DropdownOption(key=k, text=t) for k, t in options],
@@ -509,6 +565,7 @@ def _icon_button(icon, tooltip: str, on_click=None) -> ft.IconButton:
 # First-run onboarding — config helpers
 # ---------------------------------------------------------------------------
 
+
 def _get_config_path() -> str:
     """Return the path to ~/.whisper-walkie/config.json."""
     return os.path.join(os.path.expanduser("~"), ".whisper-walkie", "config.json")
@@ -542,6 +599,7 @@ def _is_first_run() -> bool:
 # ---------------------------------------------------------------------------
 # First-run onboarding — dialog builder
 # ---------------------------------------------------------------------------
+
 
 def _build_onboarding_dialog(page: ft.Page) -> ft.AlertDialog:
     """
@@ -584,12 +642,22 @@ def _build_onboarding_dialog(page: ft.Page) -> ft.AlertDialog:
         if step_dots_container_ref.current:
             for i, ref in enumerate(dot_refs):
                 if ref.current:
-                    ref.current.bgcolor = DS.PRIMARY if i == _step[0] else DS.BORDER_BRIGHT
+                    ref.current.bgcolor = (
+                        DS.PRIMARY if i == _step[0] else DS.BORDER_BRIGHT
+                    )
                     ref.current.width = 24 if i == _step[0] else 8
 
     # ---- Shared option data (mirrors the settings panel) ----
 
-    HOTKEY_OPTIONS_KEYS = ['right alt', 'scroll lock', 'pause', 'f13', 'f14', 'insert', 'right ctrl']
+    HOTKEY_OPTIONS_KEYS = [
+        "right alt",
+        "scroll lock",
+        "pause",
+        "f13",
+        "f14",
+        "insert",
+        "right ctrl",
+    ]
     hotkey_options = [(k, k.upper()) for k in HOTKEY_OPTIONS_KEYS]
 
     try:
@@ -597,7 +665,7 @@ def _build_onboarding_dialog(page: ft.Page) -> ft.AlertDialog:
         audio_input_devices = [
             (str(i), f"{d['name']} ({int(d['default_samplerate'])} Hz)")
             for i, d in enumerate(all_devices)
-            if d['max_input_channels'] > 0
+            if d["max_input_channels"] > 0
         ]
     except Exception:
         audio_input_devices = []
@@ -641,7 +709,8 @@ def _build_onboarding_dialog(page: ft.Page) -> ft.AlertDialog:
             controls=[
                 # App icon
                 ft.Container(
-                    width=64, height=64,
+                    width=64,
+                    height=64,
                     border_radius=18,
                     bgcolor=DS.PRIMARY,
                     alignment=ft.Alignment(0, 0),
@@ -763,7 +832,9 @@ def _build_onboarding_dialog(page: ft.Page) -> ft.AlertDialog:
                 ft.Container(
                     bgcolor=DS.BG_OVERLAY,
                     border_radius=DS.RADIUS_LG,
-                    padding=ft.Padding.symmetric(horizontal=DS.SP_XL, vertical=DS.SP_LG),
+                    padding=ft.Padding.symmetric(
+                        horizontal=DS.SP_XL, vertical=DS.SP_LG
+                    ),
                     border=ft.Border.all(1, DS.PRIMARY + "55"),
                     content=ft.Column(
                         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -787,7 +858,9 @@ def _build_onboarding_dialog(page: ft.Page) -> ft.AlertDialog:
                                     ft.Container(
                                         bgcolor=DS.PRIMARY_DIM,
                                         border_radius=DS.RADIUS_SM,
-                                        padding=ft.Padding.symmetric(horizontal=10, vertical=4),
+                                        padding=ft.Padding.symmetric(
+                                            horizontal=10, vertical=4
+                                        ),
                                         border=ft.Border.all(1, DS.PRIMARY_GLOW + "88"),
                                         content=ft.Text(
                                             hotkey_label,
@@ -861,8 +934,12 @@ def _build_onboarding_dialog(page: ft.Page) -> ft.AlertDialog:
                 idx = int(device_str)
                 state.selected_device_index = idx
                 devices = sd.query_devices()
-                state.device_sample_rate = int(devices[idx]['default_samplerate'])
-                log.info("Onboarding: device set to index %d, rate %d", idx, state.device_sample_rate)
+                state.device_sample_rate = int(devices[idx]["default_samplerate"])
+                log.info(
+                    "Onboarding: device set to index %d, rate %d",
+                    idx,
+                    state.device_sample_rate,
+                )
             except (ValueError, IndexError) as exc:
                 log.warning("Onboarding device change error: %s", exc)
 
@@ -917,7 +994,7 @@ def _build_onboarding_dialog(page: ft.Page) -> ft.AlertDialog:
 
         # Back button visibility
         if back_btn_ref.current:
-            back_btn_ref.current.visible = (step > 0)
+            back_btn_ref.current.visible = step > 0
 
         # Refresh step dots
         _refresh_dots()
@@ -1042,7 +1119,8 @@ def _build_about_dialog(page: ft.Page) -> ft.AlertDialog:
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
             controls=[
                 ft.Container(
-                    width=28, height=28,
+                    width=28,
+                    height=28,
                     border_radius=8,
                     bgcolor=DS.PRIMARY,
                     alignment=ft.Alignment(0, 0),
@@ -1121,6 +1199,7 @@ def _close_about_dialog(dialog: ft.AlertDialog, page: ft.Page) -> None:
 # TranscriptionEntry — a single row in the history list
 # ---------------------------------------------------------------------------
 
+
 def _transcription_entry(
     text: str,
     timestamp: str,
@@ -1130,7 +1209,7 @@ def _transcription_entry(
 ) -> ft.Container:
     """Renders one transcription history row."""
 
-    is_latest = (index == 0)
+    is_latest = index == 0
     accent_bar_color = DS.PRIMARY if is_latest else DS.BORDER_BRIGHT
 
     return ft.Container(
@@ -1168,7 +1247,8 @@ def _transcription_entry(
                             controls=[
                                 ft.Text(timestamp, size=10, color=DS.TEXT_MUTED),
                                 ft.Container(
-                                    width=3, height=3,
+                                    width=3,
+                                    height=3,
                                     border_radius=2,
                                     bgcolor=DS.TEXT_MUTED,
                                 ),
@@ -1198,6 +1278,7 @@ def _transcription_entry(
 # Status card — the hero section of the UI
 # ---------------------------------------------------------------------------
 
+
 class StatusCard:
     """
     Builds the status hero card and exposes update methods
@@ -1207,39 +1288,39 @@ class StatusCard:
     # State descriptors
     STATES = {
         "loading": {
-            "label":     "Loading",
-            "sublabel":  "Loading speech model — this may take a moment...",
-            "color":     DS.STATE_PROCESSING,
-            "icon":      ft.Icons.HOURGLASS_TOP_ROUNDED,
-            "badge_bg":  "#2a1a00",
+            "label": "Loading",
+            "sublabel": "Loading speech model — this may take a moment...",
+            "color": DS.STATE_PROCESSING,
+            "icon": ft.Icons.HOURGLASS_TOP_ROUNDED,
+            "badge_bg": "#2a1a00",
         },
         "ready": {
-            "label":     "Ready",
-            "sublabel":  "Hold Right Alt to speak",
-            "color":     DS.STATE_READY,
-            "icon":      ft.Icons.MIC_NONE_ROUNDED,
-            "badge_bg":  "#0a2a2e",
+            "label": "Ready",
+            "sublabel": "Hold Right Alt to speak",
+            "color": DS.STATE_READY,
+            "icon": ft.Icons.MIC_NONE_ROUNDED,
+            "badge_bg": "#0a2a2e",
         },
         "recording": {
-            "label":     "Recording",
-            "sublabel":  "Release Right Alt when done",
-            "color":     DS.STATE_RECORDING,
-            "icon":      ft.Icons.MIC_ROUNDED,
-            "badge_bg":  "#2a0a14",
+            "label": "Recording",
+            "sublabel": "Release Right Alt when done",
+            "color": DS.STATE_RECORDING,
+            "icon": ft.Icons.MIC_ROUNDED,
+            "badge_bg": "#2a0a14",
         },
         "processing": {
-            "label":     "Processing",
-            "sublabel":  "Transcribing audio...",
-            "color":     DS.STATE_PROCESSING,
-            "icon":      ft.Icons.GRAPHIC_EQ_ROUNDED,
-            "badge_bg":  "#2a1a00",
+            "label": "Processing",
+            "sublabel": "Transcribing audio...",
+            "color": DS.STATE_PROCESSING,
+            "icon": ft.Icons.GRAPHIC_EQ_ROUNDED,
+            "badge_bg": "#2a1a00",
         },
         "result": {
-            "label":     "Typed",
-            "sublabel":  "Text inserted into active window",
-            "color":     DS.STATE_SUCCESS,
-            "icon":      ft.Icons.CHECK_CIRCLE_OUTLINE_ROUNDED,
-            "badge_bg":  "#0a2a1a",
+            "label": "Typed",
+            "sublabel": "Text inserted into active window",
+            "color": DS.STATE_SUCCESS,
+            "icon": ft.Icons.CHECK_CIRCLE_OUTLINE_ROUNDED,
+            "badge_bg": "#0a2a1a",
         },
     }
 
@@ -1247,16 +1328,16 @@ class StatusCard:
         self._state_key = "ready"
 
         # Refs for live mutation
-        self._outer_ring_ref   = ft.Ref()
-        self._mid_ring_ref     = ft.Ref()
-        self._dot_ref          = ft.Ref()
-        self._mic_icon_ref     = ft.Ref()
-        self._badge_ref        = ft.Ref()
-        self._label_ref        = ft.Ref()
-        self._sublabel_ref     = ft.Ref()
-        self._result_row_ref   = ft.Ref()
-        self._result_text_ref  = ft.Ref()
-        self._live_timer_ref   = ft.Ref()
+        self._outer_ring_ref = ft.Ref()
+        self._mid_ring_ref = ft.Ref()
+        self._dot_ref = ft.Ref()
+        self._mic_icon_ref = ft.Ref()
+        self._badge_ref = ft.Ref()
+        self._label_ref = ft.Ref()
+        self._sublabel_ref = ft.Ref()
+        self._result_row_ref = ft.Ref()
+        self._result_text_ref = ft.Ref()
+        self._live_timer_ref = ft.Ref()
 
         # Live recording timer state
         self._timer_thread = None
@@ -1271,21 +1352,24 @@ class StatusCard:
         # Concentric rings
         outer_ring = ft.Container(
             ref=self._outer_ring_ref,
-            width=80, height=80,
+            width=80,
+            height=80,
             border_radius=40,
             bgcolor=s["color"],
             opacity=0.08,
         )
         mid_ring = ft.Container(
             ref=self._mid_ring_ref,
-            width=60, height=60,
+            width=60,
+            height=60,
             border_radius=30,
             bgcolor=s["color"],
             opacity=0.18,
         )
         core_dot = ft.Container(
             ref=self._dot_ref,
-            width=42, height=42,
+            width=42,
+            height=42,
             border_radius=21,
             bgcolor=s["color"],
             opacity=0.95,
@@ -1298,11 +1382,21 @@ class StatusCard:
             ),
         )
         ring_stack = ft.Stack(
-            width=80, height=80,
+            width=80,
+            height=80,
             controls=[
-                ft.Container(width=80, height=80, alignment=ft.Alignment(0, 0), content=outer_ring),
-                ft.Container(width=80, height=80, alignment=ft.Alignment(0, 0), content=mid_ring),
-                ft.Container(width=80, height=80, alignment=ft.Alignment(0, 0), content=core_dot),
+                ft.Container(
+                    width=80,
+                    height=80,
+                    alignment=ft.Alignment(0, 0),
+                    content=outer_ring,
+                ),
+                ft.Container(
+                    width=80, height=80, alignment=ft.Alignment(0, 0), content=mid_ring
+                ),
+                ft.Container(
+                    width=80, height=80, alignment=ft.Alignment(0, 0), content=core_dot
+                ),
             ],
         )
 
@@ -1318,7 +1412,8 @@ class StatusCard:
                 tight=True,
                 controls=[
                     ft.Container(
-                        width=6, height=6,
+                        width=6,
+                        height=6,
                         border_radius=3,
                         bgcolor=s["color"],
                     ),
@@ -1405,7 +1500,9 @@ class StatusCard:
 
     # ---- State transitions ----
 
-    def _apply_color(self, color: str, badge_bg: str, label: str, sublabel: str, icon, page):
+    def _apply_color(
+        self, color: str, badge_bg: str, label: str, sublabel: str, icon, page
+    ):
         """Mutate all color-bearing refs in one pass."""
         # Rings
         if self._outer_ring_ref.current:
@@ -1425,7 +1522,7 @@ class StatusCard:
             row = self._badge_ref.current.content
             if row and len(row.controls) >= 2:
                 row.controls[0].bgcolor = color  # dot
-                row.controls[1].color   = color  # text
+                row.controls[1].color = color  # text
         if self._label_ref.current:
             self._label_ref.current.value = label
         if self._sublabel_ref.current:
@@ -1442,7 +1539,7 @@ class StatusCard:
         s = dict(self.STATES[state_key])  # copy to avoid mutating class dict
 
         # Use the actual configured hotkey in sublabels
-        hotkey_label = state.hotkey.upper() if hasattr(state, 'hotkey') else "RIGHT ALT"
+        hotkey_label = state.hotkey.upper() if hasattr(state, "hotkey") else "RIGHT ALT"
         if state_key == "ready":
             s["sublabel"] = f"Hold {hotkey_label} to speak"
         elif state_key == "recording":
@@ -1458,13 +1555,15 @@ class StatusCard:
         )
 
         # Timer visibility
-        is_recording = (state_key == "recording")
+        is_recording = state_key == "recording"
         if self._live_timer_ref.current:
             self._live_timer_ref.current.visible = is_recording
 
         # Result preview
         if self._result_row_ref.current:
-            self._result_row_ref.current.visible = (state_key == "result" and bool(result_text))
+            self._result_row_ref.current.visible = state_key == "result" and bool(
+                result_text
+            )
         if self._result_text_ref.current and result_text:
             self._result_text_ref.current.value = f'"{result_text}"'
 
@@ -1504,29 +1603,28 @@ class StatusCard:
         self._elapsed_sec = 0
 
 
-
-
 # ---------------------------------------------------------------------------
 # Custom GUI (Flet 0.81.0 Compatible) — Premium Design
 # ---------------------------------------------------------------------------
+
 
 def main_gui(page: ft.Page):
     """Main GUI entry point — integrates premium design with live backend state."""
 
     # ---- Window configuration ----
-    page.window.width       = 450
-    page.window.height      = 720
-    page.window.min_width   = 420
-    page.window.min_height  = 600
-    page.window.resizable   = True
+    page.window.width = 450
+    page.window.height = 720
+    page.window.min_width = 420
+    page.window.min_height = 600
+    page.window.resizable = True
     page.window.always_on_top = False
-    page.title              = "Whisper Walkie"
+    page.title = "Whisper Walkie"
 
     # ---- Page theme ----
     page.theme_mode = ft.ThemeMode.DARK
-    page.bgcolor    = DS.BG_BASE
-    page.padding    = 0
-    page.fonts      = {}
+    page.bgcolor = DS.BG_BASE
+    page.padding = 0
+    page.fonts = {}
 
     page.theme = ft.Theme(
         color_scheme_seed=DS.PRIMARY,
@@ -1639,9 +1737,11 @@ def main_gui(page: ft.Page):
                 ),
             )
         else:
+
             def _make_copy_handler(entry_text: str):
                 def _copy(e):
                     pyperclip.copy(entry_text)
+
                 return _copy
 
             rows = [
@@ -1689,7 +1789,15 @@ def main_gui(page: ft.Page):
     hotkey_ref = ft.Ref()
     device_ref = ft.Ref()
 
-    HOTKEY_OPTIONS_KEYS = ['right alt', 'scroll lock', 'pause', 'f13', 'f14', 'insert', 'right ctrl']
+    HOTKEY_OPTIONS_KEYS = [
+        "right alt",
+        "scroll lock",
+        "pause",
+        "f13",
+        "f14",
+        "insert",
+        "right ctrl",
+    ]
     hotkey_options = [(k, k.upper()) for k in HOTKEY_OPTIONS_KEYS]
 
     # Audio input devices from sounddevice
@@ -1698,7 +1806,7 @@ def main_gui(page: ft.Page):
         audio_input_devices = [
             (str(i), f"{d['name']} ({int(d['default_samplerate'])} Hz)")
             for i, d in enumerate(all_devices)
-            if d['max_input_channels'] > 0
+            if d["max_input_channels"] > 0
         ]
     except Exception as _dev_err:
         log.warning(f"Could not enumerate audio devices: {_dev_err}")
@@ -1711,7 +1819,7 @@ def main_gui(page: ft.Page):
             # Update footer chip label
             if footer_chip_ref.current:
                 content = footer_chip_ref.current.content
-                if content and hasattr(content, 'value'):
+                if content and hasattr(content, "value"):
                     content.value = new_key.upper()
             page.update()
             log.info(f"Hotkey changed to: {new_key}")
@@ -1723,8 +1831,10 @@ def main_gui(page: ft.Page):
                 idx = int(new_device_str)
                 state.selected_device_index = idx
                 devices = sd.query_devices()
-                state.device_sample_rate = int(devices[idx]['default_samplerate'])
-                log.info(f"Audio device changed to index {idx}, sample rate {state.device_sample_rate}")
+                state.device_sample_rate = int(devices[idx]["default_samplerate"])
+                log.info(
+                    f"Audio device changed to index {idx}, sample rate {state.device_sample_rate}"
+                )
             except (ValueError, IndexError) as ex:
                 log.warning(f"Device change error: {ex}")
 
@@ -1735,7 +1845,9 @@ def main_gui(page: ft.Page):
         # Verify this index is actually in the options list
         valid_keys = [k for k, _ in audio_input_devices]
         if initial_device_value not in valid_keys:
-            initial_device_value = audio_input_devices[0][0] if audio_input_devices else None
+            initial_device_value = (
+                audio_input_devices[0][0] if audio_input_devices else None
+            )
 
     settings_panel = ft.Container(
         bgcolor=DS.BG_SURFACE,
@@ -1771,7 +1883,9 @@ def main_gui(page: ft.Page):
                 ),
                 _styled_dropdown(
                     "Microphone",
-                    audio_input_devices if audio_input_devices else [("default", "System Default")],
+                    audio_input_devices
+                    if audio_input_devices
+                    else [("default", "System Default")],
                     device_ref,
                     on_change=handle_device_change,
                     initial_value=initial_device_value,
@@ -1831,7 +1945,9 @@ def main_gui(page: ft.Page):
         if pin_text_ref.current:
             pin_text_ref.current.color = DS.PRIMARY if _pinned[0] else DS.TEXT_MUTED
         if pin_chip_ref.current:
-            pin_chip_ref.current.bgcolor = (DS.BG_ELEVATED if not _pinned[0] else DS.PRIMARY_DIM)
+            pin_chip_ref.current.bgcolor = (
+                DS.BG_ELEVATED if not _pinned[0] else DS.PRIMARY_DIM
+            )
         page.update()
 
     pin_chip = ft.Container(
@@ -1873,7 +1989,8 @@ def main_gui(page: ft.Page):
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
         controls=[
             ft.Container(
-                width=34, height=34,
+                width=34,
+                height=34,
                 border_radius=10,
                 bgcolor=DS.PRIMARY,
                 alignment=ft.Alignment(0, 0),
@@ -1966,8 +2083,8 @@ def main_gui(page: ft.Page):
     # Assemble the layout
     # ----------------------------------------------------------------
 
-    status_panel   = status_card.build()
-    history_panel  = ft.Container(
+    status_panel = status_card.build()
+    history_panel = ft.Container(
         ref=history_panel_ref,
         content=_build_history_panel(transcription_log),
     )
@@ -2025,10 +2142,11 @@ def main_gui(page: ft.Page):
         if ui_state == "result" and transcription_text:
             now = datetime.datetime.now()
             entry = {
-                "text":      transcription_text,
-                "timestamp": now.strftime("%-I:%M %p") if platform.system() != "Windows"
-                             else now.strftime("%#I:%M %p"),
-                "duration":  "",
+                "text": transcription_text,
+                "timestamp": now.strftime("%-I:%M %p")
+                if platform.system() != "Windows"
+                else now.strftime("%#I:%M %p"),
+                "duration": "",
             }
             transcription_log.insert(0, entry)
             if len(transcription_log) > 10:
@@ -2060,17 +2178,17 @@ def main_gui(page: ft.Page):
             priority_keywords = ["realtek", "astro"]
 
         for i, d in enumerate(devices):
-            if d['max_input_channels'] > 0:
+            if d["max_input_channels"] > 0:
                 if not input_device_found:
                     state.selected_device_index = i
-                    state.device_sample_rate = int(d['default_samplerate'])
+                    state.device_sample_rate = int(d["default_samplerate"])
                     input_device_found = True
 
                 # Check if device name matches any priority keyword
-                name_lower = d['name'].lower()
+                name_lower = d["name"].lower()
                 if any(kw in name_lower for kw in priority_keywords):
                     state.selected_device_index = i
-                    state.device_sample_rate = int(d['default_samplerate'])
+                    state.device_sample_rate = int(d["default_samplerate"])
                     break
     except Exception as e:
         log.warning(f"Device setup error: {e}")
@@ -2112,10 +2230,10 @@ def main_gui(page: ft.Page):
             matched = key_name in _expected_names or scan_code in _expected_scans
 
             if matched:
-                if event_type == 'down' and not state.is_recording:
+                if event_type == "down" and not state.is_recording:
                     log.info(f"HOTKEY DOWN: name={key_name!r} scan={scan_code}")
                     start_recording()
-                elif event_type == 'up' and state.is_recording:
+                elif event_type == "up" and state.is_recording:
                     log.info(f"HOTKEY UP: name={key_name!r} scan={scan_code}")
                     stop_recording()
 
@@ -2126,10 +2244,13 @@ def main_gui(page: ft.Page):
         except Exception as e:
             print(f"Hotkey initialization error: {e}")
             state.status_text = "Hotkey Init Error"
-            if state.gui_update_callback: state.gui_update_callback("ready")
+            if state.gui_update_callback:
+                state.gui_update_callback("ready")
 
         # Audio stream setup (unchanged)
-        log.info(f"Audio device index: {state.selected_device_index}, sample rate: {state.device_sample_rate}")
+        log.info(
+            f"Audio device index: {state.selected_device_index}, sample rate: {state.device_sample_rate}"
+        )
         try:
             if state.selected_device_index is not None:
                 stream = sd.InputStream(
@@ -2137,7 +2258,7 @@ def main_gui(page: ft.Page):
                     samplerate=state.device_sample_rate,
                     channels=1,
                     callback=audio_callback,
-                    dtype='float32'
+                    dtype="float32",
                 )
                 with stream:
                     while True:

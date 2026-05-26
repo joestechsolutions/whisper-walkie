@@ -3,7 +3,7 @@ numpy==2.4.6
 faster-whisper==1.2.1
 pyperclip==1.11.0
 scipy==1.17.1
-flet[desktop]==0.85.1
+flet[desktop]==0.85.2
 requests==2.34.2
 pynput==1.8.2
 python-xlib==0.33; sys_platform == 'linux'

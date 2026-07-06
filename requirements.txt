@@ -1,5 +1,5 @@
 sounddevice==0.5.5
-numpy==2.5.0
+numpy==2.5.1
 faster-whisper==1.2.1
 pyperclip==1.11.0
 scipy==1.18.0

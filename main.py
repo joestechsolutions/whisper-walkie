@@ -164,6 +164,7 @@ _early_wayland_setup()
 import builtins
 import queue
 import threading
+import webbrowser
 
 # Fix for PyInstaller frozen builds: Flet's error handler uses `exit()` which
 # isn't available in frozen apps (it's a `site` module convenience function).
@@ -1003,7 +1004,7 @@ def _build_onboarding_dialog(page: ft.Page) -> ft.AlertDialog:
 
     # ---- Build the dialog ----
 
-    action_btn = ft.ElevatedButton(
+    action_btn = ft.FilledButton(
         ref=action_btn_ref,
         content=ft.Text(
             "Get Started",
@@ -1091,7 +1092,7 @@ def _build_about_dialog(page: ft.Page) -> ft.AlertDialog:
                             decoration_color=DS.ACCENT,
                         ),
                     ),
-                    on_click=lambda _, u=url: page.launch_url(f"https://{u}"),
+                    on_click=lambda _, u=url: webbrowser.open(f"https://{u}"),
                     style=ft.ButtonStyle(
                         overlay_color=DS.BG_OVERLAY,
                         padding=ft.Padding.all(0),

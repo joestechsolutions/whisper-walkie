@@ -115,7 +115,7 @@ https://github.com/user-attachments/assets/682d5a2b-b35b-41cd-ac61-77a16de6ad6c
 - **Configurable Hotkey** — Right Alt, Scroll Lock, Pause, F13, F14, Insert, or Right Ctrl.
 - **Transcription History** — Last 10 transcriptions with timestamps and copy buttons.
 - **Works Offline** — AI model is bundled. No internet needed after download.
-- **99 Languages** — Whisper auto-detects the spoken language. Accuracy varies by language — English is strongest.
+- **English** — Transcribes English speech. Other languages aren't supported in the app yet.
 - **Wayland Native** — Full support with auto-setup dialog, ydotool/wtype text injection, and uinput hotkey backend.
 
 ---

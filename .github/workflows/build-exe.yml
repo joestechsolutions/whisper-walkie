@@ -143,18 +143,18 @@ jobs:
       # -----------------------------------------------------------------------
       - name: Upload to release (zip)
         if: runner.os == 'Windows' || runner.os == 'macOS'
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3.0.3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3  # v3.0.4
         with:
           files: dist/${{ matrix.artifact }}.zip
 
       - name: Upload to release (installer)
         if: runner.os == 'Windows'
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3.0.3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3  # v3.0.4
         with:
           files: dist/WhisperWalkie-Setup.exe
 
       - name: Upload to release (tar.gz)
         if: runner.os == 'Linux'
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3.0.3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3  # v3.0.4
         with:
           files: dist/${{ matrix.artifact }}.tar.gz
